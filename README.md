@@ -73,4 +73,8 @@ Todos os serviços correm de forma isolada, mas estão mapeados localmente nas s
 | **pgAdmin** | Painel de controlo visual para gerir a BD | [http://localhost:2070](http://localhost:2070) |
 | **Portainer** | Gestor visual isolado de containers Docker | [http://localhost:2080](http://localhost:2080) |
 
-*(Nota: O Docker Socket Proxy garante que o Portainer comunica em segurança localmente; lembre-se da flag `--no-tls` se necessário, embora por defeito a ligação TCP já esteja configurada sem TLS no nosso ficheiro compose).*
+
+---
+
+## ⚠️ IMPORTANT LICENSE NOTICE
+Although GitHub may detect this project as a standard MIT license, it features an explicit **Non-Commercial Amendment (Commons Clause)** in the `LICENSE` file. Commercial use or profiting from this software is **strictly prohibited**.
