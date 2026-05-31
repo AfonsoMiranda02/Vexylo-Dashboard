@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="pt">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NEXORA // COGNITIVE HUD</title>
+    <!-- Favicon Override -->
+    <link rel="icon" type="image/png" href="icon.png">
+    <!-- Google Fonts for Cyberpunk HUD feeling -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <!-- Include Eel library -->
+    
+    <!-- Include Core JS -->
+    <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+    <script src="script.js" defer></script>
+</head>
+
+<body>
+    <!-- SECURITY GATEWAY: API KEY MODAL -->
+    <div id="sys-api-key-modal" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: #000; z-index: 99999; display: flex; align-items: center; justify-content: center; flex-direction: column;">
+        <div style="text-align: center; margin-bottom: 20px;">
+            <div class="scanner-line" style="width: 100%; margin-bottom: 10px;"></div>
+            <h1 style="color: var(--neon-cyan); font-family: var(--font-orbitron); font-size: 3rem; text-shadow: 0 0 10px var(--neon-cyan);">NEXORA <span class="neon-magenta">//</span> CORE</h1>
+            <p style="color: var(--neon-magenta); font-family: var(--font-mono); letter-spacing: 2px;">RESTRICTED ACCESS: BATCOMPUTER MAIN MENU</p>
+        </div>
+        <div style="width: 400px; border: 1px solid var(--neon-cyan); padding: 30px; background: rgba(0, 240, 255, 0.05); box-shadow: 0 0 15px rgba(0, 240, 255, 0.2);">
+            <label style="display: block; color: var(--neon-cyan); font-family: var(--font-mono); margin-bottom: 10px;">ENTER SYSTEM API KEY:</label>
+            <input type="password" id="sys-api-key-input" class="crypto-modal-input" placeholder="••••••••••••••" style="width: 100%; font-size: 1.2rem; padding: 10px; margin-bottom: 20px; text-align: center; letter-spacing: 5px;">
+            <button id="btn-unlock-system" class="btn-primary" style="width: 100%; padding: 15px; font-size: 1.2rem;">[ AUTHENTICATE ]</button>
+            <p id="sys-api-error" style="color: var(--neon-magenta); text-align: center; margin-top: 15px; font-family: var(--font-mono); display: none;">ACCESS DENIED. INVALID CREDENTIALS.</p>
+        </div>
+    </div>
+    
+    <div class="hud-container">
+
+        <!-- HEADER HUD -->
+        <header class="hud-header">
+            <div class="header-left">
+                <div class="scanner-line"></div>
+                <h1 class="hud-title">NEXORA <span class="neon-magenta">//</span> COGNITIVE HUD</h1>
+                <p class="hud-subtitle">SISTEMA CENTRAL DE OPERAÇÕES DO BATCOMPUTADOR</p>
+            </div>
+            <div class="header-right">
+                <div class="system-time-container">
+                    <span class="label">HORA DO SISTEMA:</span>
+                    <span id="system-time" class="value">00:00:00</span>
+                </div>
+                <div class="network-pulse">
+                    <button id="btn-toggle-vault" class="btn-icon" style="background: none; border: none; color: rgba(255, 255, 255, 0.4); text-decoration: none; cursor: pointer; font-size: 1.2rem; margin-right: 15px;" title="Cofre Criptográfico">🛡️</button>
+                    <div id="pulse-indicator" class="pulse-dot offline"></div>
+                    <span id="pulse-text" class="pulse-label">CARREGANDO...</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- SUBHEADER DECORATIVE INFO -->
+        <div class="hud-subbar">
+            <div class="telemetry-panel" style="display:flex; gap: 20px; align-items:center;">
+                <div class="tel-item" style="display:flex; flex-direction:column; width: 150px;">
+                    <div style="display:flex; justify-content:space-between; font-size:10px; color:var(--neon-cyan);">
+                        <span>CPU</span><span id="tel-cpu-val">0%</span>
+                    </div>
+                    <div
+                        style="height:4px; background:rgba(0,0,0,0.5); border:1px solid var(--neon-cyan); border-radius:2px;">
+                        <div id="tel-cpu-bar"
+                            style="height:100%; width:0%; background:var(--neon-cyan); transition: width 0.5s;"></div>
+                    </div>
+                </div>
+                <div class="tel-item" style="display:flex; flex-direction:column; width: 150px;">
+                    <div style="display:flex; justify-content:space-between; font-size:10px; color:var(--neon-cyan);">
+                        <span>RAM</span><span id="tel-ram-val">0%</span>
+                    </div>
+                    <div
+                        style="height:4px; background:rgba(0,0,0,0.5); border:1px solid var(--neon-cyan); border-radius:2px;">
+                        <div id="tel-ram-bar"
+                            style="height:100%; width:0%; background:var(--neon-cyan); transition: width 0.5s;"></div>
+                    </div>
+                </div>
+                <div class="tel-item" style="display:flex; flex-direction:column; width: 150px;">
+                    <div style="display:flex; justify-content:space-between; font-size:10px; color:var(--neon-cyan);">
+                        <span>DISK</span><span id="tel-disk-val">0%</span>
+                    </div>
+                    <div
+                        style="height:4px; background:rgba(0,0,0,0.5); border:1px solid var(--neon-cyan); border-radius:2px;">
+                        <div id="tel-disk-bar"
+                            style="height:100%; width:0%; background:var(--neon-cyan); transition: width 0.5s;"></div>
+                    </div>
+                </div>
+                <div class="tel-item" style="font-size: 12px; color: var(--neon-cyan); font-weight:bold;">
+                    TEMP: <span id="tel-temp-val">N/A</span>
+                </div>
+            </div>
+            <div class="grid-status-decor">
+                <span>GRID: ACTIVO</span>
+                <span>SECURE: ON</span>
+                <span>DB_PORT: 2000</span>
+                <span>API_PORT: 2060</span>
+            </div>
+        </div>
+
+        <!-- MAIN LAYOUT -->
+        <main class="hud-main">
+            <!-- SIDEBAR NAVIGATION -->
+            <nav class="hud-nav">
+                <button class="nav-btn active" data-tab="tab-monitor">
+                    <span class="btn-num">[01]</span>
+                    <span class="btn-text">MONITOR DO SISTEMA</span>
+                </button>
+                <button class="nav-btn" data-tab="tab-files">
+                    <span class="btn-num">[02]</span>
+                    <span class="btn-text">GESTOR DE FICHEIROS</span>
+                </button>
+                <button class="nav-btn" data-tab="tab-database">
+                    <span class="btn-num">[03]</span>
+                    <span class="btn-text">BASE DE DADOS</span>
+                </button>
+
+                <!-- Decorative matrix / system diagnostic output in sidebar -->
+                <div class="sidebar-diagnostic">
+                    <div class="diag-header">SHORTCUTS / PINS</div>
+                    <div class="diag-content" id="sidebar-shortcuts-container" style="display:flex; flex-direction:column; gap:8px; margin-bottom: 20px;">
+                        <span style="color: rgba(255,255,255,0.4); font-size: 10px;">> A verificar cofre...</span>
+                    </div>
+
+                    <div class="diag-header">SYS DIAGNOSTIC</div>
+                    <div class="diag-content" id="sys-console-log">
+                        > Core boot completed.<br>
+                        > Ready for instructions...
+                    </div>
+                </div>
+            </nav>
+
+            <!-- TAB CONTENT SECTION -->
+            <section class="hud-content">
+
+                <!-- TAB 1: MONITOR DO SISTEMA -->
+                <div id="tab-monitor" class="tab-pane active">
+                    <div class="panel-header">
+                        <h2>MONITOR DO SISTEMA</h2>
+                        <span class="decor-corner"></span>
+                    </div>
+                    
+                    <!-- IFRAME CONTAINER (HIDDEN DEFAULT) -->
+                    <div id="api-iframe-container" style="display: none; width: 100%; height: 100%; flex-direction: column;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                            <h3 style="margin: 0; color: var(--neon-cyan); font-family: 'Courier New', Courier, monospace;">DOCKER API SWAGGER</h3>
+                            <button class="btn-primary" id="btn-close-api-iframe">[ FECHAR INTERFACE API ]</button>
+                        </div>
+                        <iframe id="api-iframe" src="" style="width: 100%; flex: 1; border: 1px solid rgba(0,255,255,0.3); background: #ffffff;"></iframe>
+                    </div>
+
+                    <div class="monitor-grid" id="monitor-content-wrapper">
+                        <!-- API STATUS CARD -->
+                        <div class="hud-card full-width">
+                            <h3 class="card-title">STATUS DA API NO DOCKER</h3>
+                            <div class="api-status-wrapper">
+                                <div class="api-status-display">
+                                    <div class="status-indicator-box" id="api-status-box">
+                                        <span class="status-indicator-text" id="api-status-text">DESCONECTADO</span>
+                                    </div>
+                                    <div class="api-details">
+                                        <p><strong>Endpoint:</strong> <span
+                                                class="neon-cyan">http://localhost:2060/</span></p>
+                                        <p><strong>Resposta do Servidor:</strong></p>
+                                        <pre id="api-response-raw" class="raw-json" style="width: 100%; flex: 1; background: transparent; white-space: pre-wrap; word-wrap: break-word;">{ "loading": true }</pre>
+                                    </div>
+                                </div>
+                                <div style="display: flex; gap: 10px;">
+                                    <button class="btn-primary" id="btn-access-api">[ ACEDER À API ]</button>
+                                    <button class="btn-primary" id="btn-recheck-api">FORÇAR DIAGNÓSTICO</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- OS STATS CARD -->
+                        <div class="hud-card">
+                            <h3 class="card-title">INFORMAÇÃO DO SISTEMA OPERATIVO</h3>
+                            <div class="specs-grid" id="os-specs">
+                                <div class="spec-item">
+                                    <span class="spec-label">SISTEMA</span>
+                                    <span class="spec-val" id="spec-os">-</span>
+                                </div>
+                                <div class="spec-item">
+                                    <span class="spec-label">VERSÃO</span>
+                                    <span class="spec-val" id="spec-release">-</span>
+                                </div>
+                                <div class="spec-item">
+                                    <span class="spec-label">ARQUITETURA</span>
+                                    <span class="spec-val" id="spec-arch">-</span>
+                                </div>
+                                <div class="spec-item">
+                                    <span class="spec-label">CPU NÚCLEOS</span>
+                                    <span class="spec-val" id="spec-cores">-</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- ENVIRONMENT INFO CARD -->
+                        <div class="hud-card">
+                            <h3 class="card-title">AMBIENTE & HARDWARE</h3>
+                            <div class="specs-grid" id="env-specs">
+                                <div class="spec-item">
+                                    <span class="spec-label">PROCESSADOR</span>
+                                    <span class="spec-val" id="spec-cpu">-</span>
+                                </div>
+                                <div class="spec-item">
+                                    <span class="spec-label">PYTHON</span>
+                                    <span class="spec-val" id="spec-pyver">-</span>
+                                </div>
+                                <div class="spec-item">
+                                    <span class="spec-label">PASTA HOME</span>
+                                    <span class="spec-val truncate" id="spec-home">-</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- API IFRAME CONTAINER -->
+                    <div id="api-panel-container" style="display: none; margin-top: 20px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                            <h3 style="color: var(--neon-cyan); font-family: var(--font-header);">[ NEXORA CORE API ]</h3>
+                            <button class="btn-secondary" id="btn-close-api-panel">[ FECHAR PAINEL ]</button>
+                        </div>
+                        <iframe id="api-iframe" src="" style="width: 100%; height: 75vh; border: 2px solid #00f0ff; background: transparent; box-shadow: 0 0 15px rgba(0, 240, 255, 0.2);"></iframe>
+                    </div>
+                </div>
+
+                <!-- TAB 2: GESTOR DE FICHEIROS -->
+                <div id="tab-files" class="tab-pane">
+                    <div class="panel-header">
+                        <h2>GESTOR DE FICHEIROS</h2>
+                        <span class="decor-corner"></span>
+                    </div>
+
+                    <div class="files-wrapper">
+                        <div class="file-path-bar">
+                            <span class="path-label">DIR ATUAL:</span>
+                            <input type="text" id="current-home-dir"
+                                style="flex:1; background: transparent; border: none; color: var(--neon-cyan); font-family: 'Share Tech Mono', monospace; font-size: 14px; outline: none; margin-left: 10px;"
+                                value="Carregando...">
+                        </div>
+
+                        <div class="file-creation-bar" style="display: flex; gap: 15px; padding: 10px; border: 1px dashed var(--border-gray); background-color: rgba(0, 0, 0, 0.5); align-items: center;">
+                            <!-- Creation Controls -->
+                            <div class="creation-group" style="display: flex; gap: 10px;">
+                                <div style="display: flex; gap: 5px;">
+                                    <input type="text" id="input-new-folder" placeholder="Nome da pasta..." class="compact-input" style="border-color: var(--neon-magenta);">
+                                    <button id="btn-create-folder" class="btn-micro magenta">[ + PASTA ]</button>
+                                </div>
+                                <div style="display: flex; gap: 5px;">
+                                    <input type="text" id="input-new-file" placeholder="nome.txt..." class="compact-input" style="border-color: var(--neon-green);">
+                                    <button id="btn-create-file" class="btn-micro green">[ + FICHEIRO ]</button>
+                                </div>
+                            </div>
+                            
+                            <!-- Search Bar Placeholder -->
+                            <div class="search-group" style="display: flex; flex: 1;">
+                                <input type="text" id="search-input-box" placeholder="[ SEARCH BINARY... ]" class="search-input">
+                            </div>
+
+                            <!-- View & Action Controls -->
+                            <div class="view-group" style="display: flex; gap: 8px;">
+                                <button id="btn-view-list" class="view-btn active">[ LIST ]</button>
+                                <button id="btn-view-grid" class="view-btn">[ GRID ]</button>
+                                <button id="btn-refresh-dir" class="btn-micro cyan">[ REFRESH ]</button>
+                            </div>
+                        </div>
+
+                        <div class="files-table-container" id="files-table-container">
+                            <table class="hud-table">
+                                <thead>
+                                    <tr>
+                                        <th>TIPO</th>
+                                        <th>NOME DO FICHEIRO</th>
+                                        <th class="align-right">TAMANHO</th>
+                                        <th class="align-right">UTILS</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="files-list-body">
+                                    <tr>
+                                        <td colspan="4" class="loading-td">Lendo directório principal...</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <!-- NANO EDITOR OVERLAY -->
+                        <div id="nano-overlay"
+                            style="display: none; width: 100%; min-height: 400px; background-color: #000; color: var(--neon-cyan); font-family: 'Share Tech Mono', monospace; flex-direction: column; border: 1px solid var(--neon-cyan); margin-top: 10px; position: relative;">
+                            
+                            <!-- BARRINHA DE FIND (ESCONDIDA POR DEFEITO) -->
+                            <div id="nano-find-container" style="display: none; padding: 5px; background: #111; border-bottom: 1px solid var(--neon-cyan);">
+                                <span>Find: </span>
+                                <input type="text" id="nano-find-input" style="background: transparent; border: 1px solid var(--neon-cyan); color: var(--neon-yellow); outline: none; padding: 2px 5px; font-family: inherit; width: 200px;" autocomplete="off" />
+                            </div>
+
+                            <textarea id="nano-textarea"
+                                style="flex: 1; min-height: 360px; background: transparent; border: none; color: var(--neon-green); font-family: inherit; resize: vertical; padding: 10px; outline: none; font-size: 14px; width: 100%; box-sizing: border-box;"></textarea>
+                            <div class="nano-shortcuts"
+                                style="background-color: var(--neon-cyan); color: #000; padding: 5px 10px; font-weight: bold; display: flex; gap: 20px;">
+                                <span class="nano-btn" id="btn-nano-save" style="cursor: pointer;">[^S] Save</span>
+                                <span class="nano-btn" id="btn-nano-exit" style="cursor: pointer;">[^X] Exit</span>
+                                <span class="nano-btn" id="btn-nano-copy" style="cursor: pointer;">[^C] Copy</span>
+                                <span class="nano-btn" id="btn-nano-paste" style="cursor: pointer;">[^V] Paste</span>
+                                <span class="nano-btn" id="btn-nano-find" style="cursor: pointer;">[^F] Find</span>
+                                <span id="nano-status" style="margin-left: auto; color: #000;"></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TAB 3: BASE DE DADOS -->
+                <div id="tab-database" class="tab-pane">
+                    <div class="panel-header">
+                        <h2>CONTROLE DA BASE DE DADOS</h2>
+                        <span class="decor-corner"></span>
+                    </div>
+
+                    <div class="database-split">
+                        <!-- REGISTRATION FORM -->
+                        <div class="hud-card db-form-card">
+                            <h3 class="card-title">REGISTAR NOVO PERFIL</h3>
+                            <form id="profile-form">
+                                <div class="form-group">
+                                    <label for="input-nome">NOME COMPLETO</label>
+                                    <input type="text" id="input-nome" placeholder="ex: Bruce Wayne" required>
+                                </div>
+                                <div class="form-group">
+                                    <label for="input-cargo">CARGO / FUNÇÃO</label>
+                                    <input type="text" id="input-cargo" placeholder="ex: Vigilante" required>
+                                </div>
+                                <div class="form-group">
+                                    <label for="input-idade">IDADE</label>
+                                    <input type="number" id="input-idade" placeholder="ex: 35" required min="1">
+                                </div>
+                                <div class="form-group">
+                                    <label for="input-notas">NOTAS DE OBSERVAÇÃO</label>
+                                    <textarea id="input-notas" placeholder="Inserir observações confidenciais..."
+                                        rows="4"></textarea>
+                                </div>
+                                <button type="submit" class="btn-primary full-width" id="btn-save-profile">COMPROMETER
+                                    REGISTO</button>
+                            </form>
+                            <div id="form-feedback" class="feedback-msg"></div>
+                        </div>
+
+                        <!-- PROFILES LIST -->
+                        <div class="hud-card db-list-card">
+                            <div class="card-header-actions">
+                                <h3 class="card-title">PERFIS CADASTRADOS</h3>
+                                <button class="btn-secondary" id="btn-refresh-profiles">SINCRONIZAR DB</button>
+                            </div>
+
+                            <div class="db-table-container">
+                                <table class="hud-table">
+                                    <thead>
+                                        <tr>
+                                            <th>ID</th>
+                                            <th>NOME</th>
+                                            <th>CARGO</th>
+                                            <th>IDADE</th>
+                                            <th>NOTAS</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="profiles-list-body">
+                                        <tr>
+                                            <td colspan="5" class="loading-td">Nenhum perfil sincronizado. Clica em
+                                                Sincronizar.</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </section>
+        </main>
+
+        <!-- FOOTER STATUS BAR -->
+        <footer class="hud-footer">
+            <div class="footer-left">SYS_STATUS: ON_LINE</div>
+            <div class="footer-center">BATCOMPUTER CORE OPERATIONAL - PROTOCOLO NEXORA V1</div>
+            <div class="footer-right">LEVEL_01_SECURE</div>
+        </footer>
+    </div>
+
+    <!-- CUSTOM CRYPTO PASSWORD MODAL -->
+    <div id="crypto-modal" style="display: none;">
+        <div class="crypto-modal-panel">
+            <h3 class="crypto-modal-title">[ SECURITY CLEARANCE REQUIRED ]</h3>
+            <p class="crypto-modal-instruction">> ENTER CRYPTO PASSWORD:</p>
+            <input type="password" id="crypto-input" class="crypto-modal-input" autocomplete="off" />
+            <div class="crypto-modal-actions">
+                <button id="crypto-btn-confirm" class="btn-micro cyan">[ CONFIRM ]</button>
+                <button id="crypto-btn-cancel" class="btn-micro magenta">[ CANCEL ]</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- IMAGE VIEWER PROTOCOL MODAL -->
+    <div id="image-viewer-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background-color: rgba(0, 0, 0, 0.9); backdrop-filter: blur(5px); justify-content: center; align-items: center; z-index: 10000; flex-direction: column;">
+        <div style="display: flex; justify-content: space-between; align-items: center; width: 80%; max-width: 1000px; margin-bottom: 10px;">
+            <div style="display: flex; align-items: center; gap: 15px;">
+                <h3 class="crypto-modal-title" style="margin: 0;">[ IMAGE ANALYSIS PROTOCOL ] <span id="image-viewer-counter" style="color: var(--neon-magenta); font-size: 0.9rem; margin-left: 10px;"></span></h3>
+                <input type="range" id="image-viewer-zoom" min="10" max="500" value="100" style="width: 150px; cursor: pointer;">
+                <input type="number" id="image-viewer-zoom-val" value="100" min="10" max="500" style="background: rgba(0,0,0,0.5); color: var(--neon-cyan); border: 1px solid var(--neon-cyan); font-family: var(--font-mono); font-size: 0.9rem; width: 60px; text-align: center; outline: none; margin-left: 10px;">
+                <span style="color: var(--neon-cyan); font-family: var(--font-mono); font-size: 0.9rem; margin-left: 5px;">%</span>
+            </div>
+            <button class="btn-micro magenta" id="btn-close-image-viewer" style="font-size: 1rem; padding: 5px 15px;">[ X ] FECHAR</button>
+        </div>
+        <div style="width: 80%; max-width: 1000px; height: 75vh; position: relative;">
+            <button id="btn-prev-image" style="position: absolute; left: 10px; top: 50%; transform: translateY(-50%); background: rgba(0,0,0,0.7); border: 1px solid var(--neon-cyan); color: var(--neon-cyan); font-size: 2rem; cursor: pointer; padding: 10px 15px; z-index: 10; display: none;">&#10094;</button>
+            <div id="image-viewer-loading" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: var(--neon-cyan); font-family: var(--font-mono); font-size: 2rem; pointer-events: none; z-index: 10;">LOADING...</div>
+            <button id="btn-next-image" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: rgba(0,0,0,0.7); border: 1px solid var(--neon-cyan); color: var(--neon-cyan); font-size: 2rem; cursor: pointer; padding: 10px 15px; z-index: 10; display: none;">&#10095;</button>
+            
+            <div id="image-viewer-container" style="width: 100%; height: 100%; border: 1px solid var(--neon-cyan); box-shadow: 0 0 20px rgba(0, 240, 255, 0.2); background: rgba(0,0,0,0.5); overflow: auto; position: relative; user-select: none; display: flex;">
+                <img id="image-viewer-img" src="" style="margin: auto; max-width: 100%; max-height: 100%; object-fit: contain; z-index: 2; flex-shrink: 0;" />
+            </div>
+        </div>
+        <div id="image-viewer-path" style="margin-top: 10px; color: var(--neon-yellow); font-family: var(--font-mono); font-size: 0.8rem;"></div>
+    </div>
+
+    <!-- UNZIP PROTOCOL MODAL -->
+    <div id="unzip-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background-color: rgba(0, 0, 0, 0.85); backdrop-filter: blur(4px); justify-content: center; align-items: center; z-index: 9999;">
+        <div class="crypto-modal-panel">
+            <h3 class="crypto-modal-title">[ ZIP EXTRACTION PROTOCOL ]</h3>
+            <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 15px; margin-bottom: 20px;">
+                <label style="color: var(--neon-cyan); font-size: 0.8rem;">> DESTINO:</label>
+                <input type="text" id="unzip-dest-input" class="crypto-modal-input" autocomplete="off" />
+                
+                <div style="display: flex; flex-direction: column; gap: 5px; margin-top: 10px; color: var(--text-bright); font-size: 0.85rem;">
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                        <input type="radio" name="unzip_opt" id="unzip-opt-subfolder" value="subfolder" checked style="accent-color: var(--neon-cyan);" />
+                        Criar subpasta com nome do arquivo
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                        <input type="radio" name="unzip_opt" id="unzip-opt-loose" value="loose" style="accent-color: var(--neon-cyan);" />
+                        Extrair ficheiros soltos na pasta de destino
+                    </label>
+                </div>
+            </div>
+            
+            <div class="crypto-modal-actions">
+                <button id="unzip-btn-execute" class="btn-micro cyan">[ EXECUTE EXTRACTION ]</button>
+                <button id="unzip-btn-abort" class="btn-micro magenta">[ ABORT ]</button>
+            </div>
+        </div>
+    </div>
+    <!-- DESTRUCTION PROTOCOL MODAL -->
+    <div id="delete-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background-color: rgba(0, 0, 0, 0.9); backdrop-filter: blur(5px); justify-content: center; align-items: center; z-index: 10000;">
+        <div class="danger-modal-panel">
+            <h3 class="danger-modal-title">[ WARNING: DESTRUCTION PROTOCOL ]</h3>
+            <p style="color: var(--text-bright); margin-top: 15px; font-size: 0.95rem;">Tem a certeza que deseja eliminar permanentemente o item:</p>
+            <div id="delete-modal-path" style="margin-top: 10px; margin-bottom: 20px; padding: 10px; background: rgba(255, 0, 85, 0.1); border: 1px dashed var(--neon-magenta); color: var(--neon-yellow); font-family: var(--font-mono); font-size: 0.9rem; word-break: break-all;"></div>
+            
+            <div class="crypto-modal-actions" style="justify-content: flex-end; gap: 15px;">
+                <button id="delete-btn-abort" class="btn-micro cyan" style="padding: 6px 12px;">[ ABORT ]</button>
+                <button id="delete-btn-execute" class="btn-micro magenta" style="padding: 6px 12px; font-size: 0.9rem;">[ CONFIRM DELETION ]</button>
+            </div>
+        </div>
+    </div>
+    <!-- CUSTOM CONTEXT MENU -->
+    <div id="custom-context-menu" style="position: absolute; display: none; z-index: 9999; background: #030712; border: 1px solid var(--neon-cyan); min-width: 220px; box-shadow: 0 0 15px rgba(0, 240, 255, 0.2); border-radius: 4px; padding: 5px 0;">
+        <button class="ctx-btn" id="ctx-pin">📌 [ PIN TO SIDEBAR ]</button>
+        <button class="ctx-btn" id="ctx-fav">⭐ [ ADD TO FAVORITES ]</button>
+        <button class="ctx-btn" id="ctx-vault">🛡️ [ MOVE TO VAULT ]</button>
+        <div style="height: 1px; background: rgba(0, 240, 255, 0.2); margin: 5px 0;"></div>
+        <button class="ctx-btn" id="ctx-ren">📝 [ QUICK RENAME ]</button>
+        <button class="ctx-btn danger" id="ctx-del">❌ [ DESTROY ITEM ]</button>
+    </div>
+
+    <!-- VAULT AUTH MODAL -->
+    <div id="vault-auth-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0, 0, 0, 0.85); z-index: 10000; align-items: center; justify-content: center; backdrop-filter: blur(5px);">
+        <div class="danger-modal-panel" style="border-color: var(--neon-cyan); box-shadow: 0 0 20px rgba(0, 240, 255, 0.3); padding: 30px; width: 350px;">
+            <div style="text-align: center; font-size: 2rem; margin-bottom: 10px;">🛡️</div>
+            <h2 style="color: var(--neon-cyan); text-align: center; margin-bottom: 20px;">[ CRYPTO VAULT ]</h2>
+            <div style="margin-bottom: 15px;">
+                <label style="display: block; font-family: var(--font-mono); font-size: 0.8rem; color: var(--text-dim); margin-bottom: 5px;">MASTER PASSWORD</label>
+                <input type="password" id="vault-password" class="crypto-modal-input" placeholder="••••••••••••" style="width: 100%;">
+            </div>
+            <div style="margin-bottom: 25px;">
+                <label style="display: block; font-family: var(--font-mono); font-size: 0.8rem; color: var(--text-dim); margin-bottom: 5px;">KEYFILE (OPCIONAL)</label>
+                <input type="file" id="vault-keyfile" class="crypto-modal-input" style="width: 100%; font-size: 0.8rem; padding: 5px;" disabled>
+                <small style="color: var(--text-dim); font-size: 0.7rem;">(Desativado. Password apenas.)</small>
+            </div>
+            <div class="crypto-modal-actions">
+                <button class="btn-micro" id="btn-vault-cancel" style="border-color: var(--text-dim); color: var(--text-dim);">[ CANCEL ]</button>
+                <button class="btn-micro cyan" id="btn-vault-mount">[ MOUNT ]</button>
+            </div>
+        </div>
+    </div>
+
+</body>
+
+</html>

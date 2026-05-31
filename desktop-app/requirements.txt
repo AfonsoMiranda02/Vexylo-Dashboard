@@ -1,0 +1,5 @@
+eel>=0.16.0
+requests>=2.31.0
+cryptography>=41.0.0
+
+psutil
