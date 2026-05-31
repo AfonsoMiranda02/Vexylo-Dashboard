@@ -1,128 +1,268 @@
-import os
-import time
-import uvicorn
-from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi import FastAPI, Depends, HTTPException, Query, APIRouter, Form, Response, Request
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
+from fastapi.openapi.docs import get_swagger_ui_html
+from fastapi.openapi.utils import get_openapi
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import create_engine, Column, Integer, String, Text
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, Session
-from pydantic import BaseModel
+from fastapi.staticfiles import StaticFiles
+from sqlalchemy.orm import Session
 from typing import List, Optional
+import os
 
-# ----------------------------------------------------
-# 1. DATABASE SETUP
-# ----------------------------------------------------
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:supersecretpassword@db:5432/superdashboard")
+from database import engine, get_db, Base
+import models, schemas, seed
+from security import get_current_user, create_access_token, API_USERNAME, API_PASSWORD
+from templates import LOGIN_HTML, DASHBOARD_HTML
 
-# Retry logic for connecting to DB on startup (useful in docker compose)
-engine = None
-for i in range(10):
-    try:
-        engine = create_engine(DATABASE_URL)
-        # Test connection
-        with engine.connect() as conn:
-            break
-    except Exception as e:
-        print(f"Database connection attempt {i+1} failed. Retrying in 3 seconds... Error: {e}")
-        time.sleep(3)
 
-if not engine:
-    engine = create_engine(DATABASE_URL)
+# Disable default docs because we want to protect them
+app = FastAPI(title="Batcomputer API", docs_url=None, redoc_url=None, openapi_url=None)
 
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-Base = declarative_base()
+# Mount static files for swagger CSS
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# Database Model
-class Perfil(Base):
-    __tablename__ = "perfis"
-
-    id = Column(Integer, primary_key=True, index=True)
-    nome = Column(String(100), nullable=False)
-    cargo = Column(String(100), nullable=False)
-    idade = Column(Integer, nullable=False)
-    notas = Column(Text, nullable=True)
-
-# Create tables
-Base.metadata.create_all(bind=engine)
-
-# Dependency to get db session
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-# ----------------------------------------------------
-# 2. PYDANTIC SCHEMAS
-# ----------------------------------------------------
-class PerfilBase(BaseModel):
-    nome: str
-    cargo: str
-    idade: int
-    notas: Optional[str] = None
-
-class PerfilCreate(PerfilBase):
-    pass
-
-class PerfilResponse(PerfilBase):
-    id: int
-
-    class Config:
-        from_attributes = True
-
-# ----------------------------------------------------
-# 3. FASTAPI APP INITIALIZATION
-# ----------------------------------------------------
-app = FastAPI(
-    title="Jarvis V1 API",
-    description="Backend API for managing user profiles",
-    version="1.0.0"
-)
-
-# Enable CORS for frontend connection (Eel app)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"], # In production, restrict to localhost origins
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# ----------------------------------------------------
-# 4. REST API ROUTES
-# ----------------------------------------------------
+@app.on_event("startup")
+def on_startup():
+    Base.metadata.create_all(bind=engine)
+    db = next(get_db())
+    seed.seed_database(db)
 
-@app.get("/")
-def get_status():
-    """System health check endpoint"""
-    # Reads PORT environment variable
-    _port = os.environ.get("PORT", "2001")
-    return {
-        "status": "Online",
-        "sistema": "Jarvis V1"
-    }
+# --- VISUAL AND AUTH ROUTES ---
 
-@app.post("/perfis", response_model=PerfilResponse, status_code=status.HTTP_201_CREATED)
-def create_perfil(perfil: PerfilCreate, db: Session = Depends(get_db)):
-    """Create a new user profile"""
-    db_perfil = Perfil(
-        nome=perfil.nome,
-        cargo=perfil.cargo,
-        idade=perfil.idade,
-        notas=perfil.notas
+@app.get("/", response_class=HTMLResponse)
+def get_login():
+    """
+    Returns the custom login form (completely open).
+    """
+    return LOGIN_HTML
+
+@app.get("/api", response_class=HTMLResponse)
+async def get_dashboard(request: Request):
+    """
+    Returns the custom dashboard if authenticated, otherwise redirects to /.
+    """
+    try:
+        # Check if the user is authenticated using the global dependency logic
+        await get_current_user(request)
+        return DASHBOARD_HTML
+    except HTTPException:
+        # If not authenticated, redirect to the login page
+        return RedirectResponse(url="/", status_code=302)
+
+@app.post("/api/login")
+def login(response: Response, username: str = Form(...), password: str = Form(...)):
+    if username != API_USERNAME or password != API_PASSWORD:
+        raise HTTPException(status_code=400, detail="Incorrect username or password")
+    
+    access_token = create_access_token(data={"sub": username})
+    
+    # Return success but also set the cookie
+    response = JSONResponse(content={"message": "Successfully logged in"})
+    response.set_cookie(
+        key="session_token", 
+        value=access_token, 
+        httponly=True, 
+        max_age=3600, # 1 hour
+        samesite="none",
+        secure=True
     )
-    db.add(db_perfil)
-    db.commit()
-    db.refresh(db_perfil)
-    return db_perfil
+    return response
 
-@app.get("/perfis", response_model=List[PerfilResponse])
-def read_perfis(db: Session = Depends(get_db)):
-    """Retrieve all user profiles"""
-    return db.query(Perfil).all()
+@app.post("/api/logout")
+def logout(response: Response):
+    response = JSONResponse(content={"message": "Successfully logged out"})
+    response.delete_cookie(key="session_token")
+    return response
+
+# --- PROTECTED SWAGGER ROUTES ---
+
+@app.get("/api/openapi.json", include_in_schema=False)
+async def get_open_api_endpoint(username: str = Depends(get_current_user)):
+    return JSONResponse(get_openapi(title="Batcomputer API", version="1.0.0", routes=app.routes))
+
+@app.get("/api/docs", include_in_schema=False)
+async def get_documentation(username: str = Depends(get_current_user)):
+    return get_swagger_ui_html(
+        openapi_url="/api/openapi.json", 
+        title="Batcomputer API - Protected Docs",
+        swagger_css_url="/static/swagger-ui.min.css"
+    )
+
+
+# --- PROTECTED API ROUTES ---
+
+# Create a router with the global security dependency for all data endpoints
+api_router = APIRouter(dependencies=[Depends(get_current_user)])
+
+# Dossiers Routes
+@api_router.get("/api/dossiers", response_model=List[schemas.DossierResponse])
+def get_dossiers(classification: Optional[str] = None, threat_level: Optional[str] = None, db: Session = Depends(get_db)):
+    query = db.query(models.Dossier)
+    if classification:
+        query = query.filter(models.Dossier.classification == classification)
+    if threat_level:
+        query = query.filter(models.Dossier.threat_level == threat_level)
+    return query.all()
+
+@api_router.post("/api/dossiers", response_model=schemas.DossierResponse)
+def create_dossier(dossier: schemas.DossierCreate, db: Session = Depends(get_db)):
+    db_dossier = models.Dossier(**dossier.dict())
+    db.add(db_dossier)
+    db.commit()
+    db.refresh(db_dossier)
+    return db_dossier
+
+@api_router.put("/api/dossiers/{dossier_id}", response_model=schemas.DossierResponse)
+def update_dossier(dossier_id: int, dossier: schemas.DossierCreate, db: Session = Depends(get_db)):
+    db_dossier = db.query(models.Dossier).filter(models.Dossier.id == dossier_id).first()
+    if not db_dossier:
+        raise HTTPException(status_code=404, detail="Dossier not found")
+    for key, value in dossier.dict().items():
+        setattr(db_dossier, key, value)
+    db.commit()
+    db.refresh(db_dossier)
+    return db_dossier
+
+@api_router.delete("/api/dossiers/{dossier_id}")
+def delete_dossier(dossier_id: int, db: Session = Depends(get_db)):
+    db_dossier = db.query(models.Dossier).filter(models.Dossier.id == dossier_id).first()
+    if not db_dossier:
+        raise HTTPException(status_code=404, detail="Dossier not found")
+    db.delete(db_dossier)
+    db.commit()
+    return {"detail": "Deleted successfully"}
+
+# Notes Routes
+@api_router.get("/api/notes", response_model=List[schemas.NoteResponse])
+def get_notes(db: Session = Depends(get_db)):
+    return db.query(models.Note).order_by(models.Note.timestamp.desc()).all()
+
+@api_router.post("/api/notes", response_model=schemas.NoteResponse)
+def create_note(note: schemas.NoteCreate, db: Session = Depends(get_db)):
+    db_note = models.Note(**note.dict())
+    db.add(db_note)
+    db.commit()
+    db.refresh(db_note)
+    return db_note
+
+@api_router.delete("/api/notes/{note_id}")
+def delete_note(note_id: int, db: Session = Depends(get_db)):
+    db_note = db.query(models.Note).filter(models.Note.id == note_id).first()
+    if not db_note:
+        raise HTTPException(status_code=404, detail="Note not found")
+    db.delete(db_note)
+    db.commit()
+    return {"detail": "Deleted successfully"}
+
+# Shortcuts Routes
+@api_router.get("/api/shortcuts", response_model=List[schemas.ShortcutResponse])
+def get_shortcuts(db: Session = Depends(get_db)):
+    return db.query(models.Shortcut).all()
+
+@api_router.post("/api/shortcuts", response_model=schemas.ShortcutResponse)
+def create_shortcut(shortcut: schemas.ShortcutCreate, db: Session = Depends(get_db)):
+    db_shortcut = models.Shortcut(**shortcut.dict())
+    db.add(db_shortcut)
+    db.commit()
+    db.refresh(db_shortcut)
+    return db_shortcut
+
+@api_router.delete("/api/shortcuts/{shortcut_id}")
+def delete_shortcut(shortcut_id: int, db: Session = Depends(get_db)):
+    db_shortcut = db.query(models.Shortcut).filter(models.Shortcut.id == shortcut_id).first()
+    if not db_shortcut:
+        raise HTTPException(status_code=404, detail="Shortcut not found")
+    db.delete(db_shortcut)
+    db.commit()
+    return {"detail": "Deleted successfully"}
+
+# System Routes (Replaces Nomad OS)
+# Global variable to store Host OS info provided by the frontend
+HOST_OS_INFO = {
+    "os": "Pending Frontend Registration...",
+    "distro": "Pending...",
+    "package_manager": "Pending..."
+}
+
+class OSInfoRequest(schemas.BaseModel):
+    os: str
+    distro: str
+    package_manager: str
+
+@api_router.post("/api/system/os")
+def register_os_info(info: OSInfoRequest):
+    global HOST_OS_INFO
+    HOST_OS_INFO["os"] = info.os
+    HOST_OS_INFO["distro"] = info.distro
+    HOST_OS_INFO["package_manager"] = info.package_manager
+    return {"success": True, "detail": "Host OS registered successfully."}
+
+@api_router.get("/api/system/os")
+def get_os_info():
+    return HOST_OS_INFO
+
+@api_router.post("/api/system/logs", response_model=schemas.SystemLogResponse)
+def create_system_log(log: schemas.SystemLogCreate, db: Session = Depends(get_db)):
+    db_log = models.SystemLog(**log.dict())
+    db.add(db_log)
+    db.commit()
+    db.refresh(db_log)
+    return db_log
+
+# --- SETTINGS & CREDENTIALS ---
+
+import security
+
+@api_router.post("/api/settings/update-credentials")
+def update_credentials(creds: schemas.UpdateCredentialsRequest):
+    security.API_USERNAME = creds.username
+    security.API_PASSWORD = creds.password
+    return {"success": True, "detail": "Credentials updated in memory. Will reset on container restart."}
+
+# --- API KEYS ---
+import uuid
+
+@api_router.get("/api/keys", response_model=List[schemas.ApiKeyResponse])
+def get_api_keys(db: Session = Depends(get_db)):
+    return db.query(models.ApiKey).filter(models.ApiKey.active == 1).all()
+
+@api_router.post("/api/keys", response_model=schemas.ApiKeyResponse)
+def create_api_key(key_in: schemas.ApiKeyCreate, db: Session = Depends(get_db)):
+    new_key_value = str(uuid.uuid4())
+    db_key = models.ApiKey(
+        name=key_in.name, 
+        key_value=new_key_value,
+        allow_get=int(key_in.allow_get),
+        allow_post=int(key_in.allow_post),
+        allow_put=int(key_in.allow_put),
+        allow_delete=int(key_in.allow_delete),
+        allow_admin=int(key_in.allow_admin)
+    )
+    db.add(db_key)
+    db.commit()
+    db.refresh(db_key)
+    return db_key
+
+@api_router.delete("/api/keys/{key_id}")
+def delete_api_key(key_id: int, db: Session = Depends(get_db)):
+    db_key = db.query(models.ApiKey).filter(models.ApiKey.id == key_id).first()
+    if not db_key:
+        raise HTTPException(status_code=404, detail="API Key not found")
+    # Soft delete
+    db_key.active = 0
+    db.commit()
+    return {"success": True, "detail": "API Key invalidated"}
+
+# Register the protected router to the main app
+app.include_router(api_router)
 
 if __name__ == "__main__":
-    # Vai buscar a porta 2001 definida no Docker, ou usa 2001 por defeito
-    porta = int(os.environ.get("PORT", 2001)) 
-    uvicorn.run("main:app", host="0.0.0.0", port=porta, reload=True)
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=2060)

@@ -1,0 +1,5 @@
+@import url("https://unpkg.com/swagger-ui-themes@3.0.1/themes/3.x/theme-muted.css");
+
+.swagger-ui { font-family: 'JetBrains Mono', monospace !important; }
+.swagger-ui .info .title { color: #00f0ff !important; text-transform: uppercase; }
+.swagger-ui .topbar { display: none !important; }

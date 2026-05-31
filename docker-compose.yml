@@ -1,65 +1,76 @@
 version: '3.8'
 
 services:
-  # 1. BASE DE DADOS (Postgres)
   db:
-    image: postgres:15-alpine
-    container_name: superdashboard-db
-    restart: always
+    image: postgres:15
+    container_name: batcomputer_db
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: supersecretpassword
       POSTGRES_DB: superdashboard
     ports:
-      - "2000:5432" # Acedes à DB por fora via porta 2000
+      - "2050:5432"
+    labels:
+      - "batcomputer.project=true"
     volumes:
-      - pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d superdashboard"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
 
-  # 2. A TUA API (FastAPI)
-  api:
-    build: ./backend-api
-    container_name: superdashboard-api
-    restart: always
-    environment:
-      DATABASE_URL: postgresql://postgres:supersecretpassword@db:5432/superdashboard
-      PORT: 2001
-    ports:
-      - "2001:2001" # O teu PC acede pela 2001 -> vai para a 2001 interna da API
-    depends_on:
-      db:
-        condition: service_healthy
-
-  # 3. UI DA BASE DE DADOS (pgAdmin)
   pgadmin:
     image: dpage/pgadmin4
-    container_name: superdashboard-pgadmin
-    restart: always
+    container_name: batcomputer_pgadmin
     environment:
-      PGADMIN_DEFAULT_EMAIL: admin@jarvis.com
-      PGADMIN_DEFAULT_PASSWORD: supersecretpassword
+      PGADMIN_DEFAULT_EMAIL: admin@batcomputer.local
+      PGADMIN_DEFAULT_PASSWORD: admin
     ports:
-      - "5050:80" # Vais abrir a interface gráfica da DB na porta 5050
+      - "2070:80"
+    labels:
+      - "batcomputer.project=true"
     depends_on:
       - db
+    restart: unless-stopped
 
-  # 4. GESTOR DE CONTAINERS (Portainer)
-  portainer:
-    image: portainer/portainer-ce:latest
-    container_name: superdashboard-portainer
-    restart: always
-    security_opt:
-      - no-new-privileges:true
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      - portainer_data:/data
+  api:
+    build: ./backend-api
+    container_name: batcomputer_api
     ports:
-      - "9000:9000" # Vais controlar o Docker todo na porta 9000
+      - "2060:2060"
+    environment:
+      - DATABASE_URL=postgresql://postgres:supersecretpassword@db:5432/superdashboard
+    volumes:
+      - ./backend-api:/app
+    labels:
+      - "batcomputer.project=true"
+    depends_on:
+      - db
+    restart: unless-stopped
+    # Para ler os processos do host (Windows/Linux local), PID namespace do host e privileges:
+    pid: "host"
+    privileged: true
+
+  docker-proxy:
+    image: tecnativa/docker-socket-proxy
+    container_name: batcomputer_docker_proxy
+    environment:
+      - CONTAINERS=1
+      - POST=1
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    labels:
+      - "batcomputer.project=true"
+    restart: unless-stopped
+
+  portainer:
+    image: portainer/portainer-ce
+    container_name: batcomputer_portainer
+    command: -H tcp://docker-proxy:2375
+    ports:
+      - "2080:9000"
+    depends_on:
+      - docker-proxy
+    labels:
+      - "batcomputer.project=true"
+    restart: unless-stopped
 
 volumes:
-  pgdata:
-  portainer_data:
+  postgres_data:
