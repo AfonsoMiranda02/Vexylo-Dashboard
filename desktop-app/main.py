@@ -9,6 +9,7 @@ import time
 import ctypes
 import subprocess
 import shutil
+import zipfile
 
 # PYQT6 IMPORTS
 from PyQt6.QtCore import QUrl
@@ -36,7 +37,7 @@ import shutil
 
 try:
     # Garante que o Windows reconhece o ID do processo para separar o ícone do Chrome
-    myappid = 'wayne.batcomputer.v1'
+    myappid = 'vexylo.dashboard.v1'
     ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
 except Exception:
     pass
@@ -54,7 +55,7 @@ except ModuleNotFoundError:
 def _derivar_chave(password: str) -> bytes:
     """Deriva uma chave estável de 32 bytes a partir da password usando um salt fixo do sistema."""
     if not Fernet: return b''
-    salt = b'batcomputer_secret_salt_123' # Salt estático para consistência de recuperação
+    salt = b'vexylo_secret_salt_123' # Salt estático para consistência de recuperação
     kdf = PBKDF2HMAC(
         algorithm=hashes.SHA256(),
         length=32,
@@ -216,14 +217,123 @@ last_api_post = time.time()
 
 
 
-class BatcomputerBridge(QObject):
+class VexyloBridge(QObject):
     def __init__(self, window):
         super().__init__()
         self.window = window
 
+    @pyqtSlot(result=bool)
+    def api_has_account(self):
+        return os.path.exists('local_account.json') and os.path.getsize('local_account.json') > 0
+
+    @pyqtSlot(str, str, result=bool)
+    def api_register_account(self, username, password):
+        if self.api_has_account():
+            return False
+        import hashlib, json
+        # Very simple hash for demonstration
+        pw_hash = hashlib.sha256(password.encode()).hexdigest()
+        data = {"username": username, "password_hash": pw_hash}
+        try:
+            with open('local_account.json', 'w') as f:
+                json.dump(data, f)
+            return True
+        except Exception:
+            return False
+
+    @pyqtSlot(str, str, result=bool)
+    def api_login_account(self, username, password):
+        if not self.api_has_account():
+            return False
+        import hashlib, json
+        try:
+            with open('local_account.json', 'r') as f:
+                data = json.load(f)
+            pw_hash = hashlib.sha256(password.encode()).hexdigest()
+            return data.get("username") == username and data.get("password_hash") == pw_hash
+        except Exception:
+            return False
+
     @pyqtSlot(str, result=bool)
-    def api_verificar_api_key(self, key):
-        return key == "4053cbd5-0eab-46c5-9d0a-9c1a49e4f0ab"
+    def api_verify_master_password(self, password):
+        if not self.api_has_account():
+            return False
+        import hashlib, json
+        try:
+            with open('local_account.json', 'r') as f:
+                data = json.load(f)
+            pw_hash = hashlib.sha256(password.encode()).hexdigest()
+            return data.get("password_hash") == pw_hash
+        except Exception:
+            return False
+
+    @pyqtSlot(result=bool)
+    def api_has_api_key(self):
+        # Dummy check for now, can be implemented later to actually check docker
+        return os.path.exists('local_apikey.json')
+
+    @pyqtSlot(str, result=bool)
+    def api_save_api_key(self, key):
+        import json
+        try:
+            with open('local_apikey.json', 'w') as f:
+                json.dump({"api_key": key}, f)
+            return True
+        except Exception:
+            return False
+
+    @pyqtSlot(result='QVariant')
+    def api_get_vaults(self):
+        import json
+        try:
+            if not os.path.exists('vaults_registry.json'):
+                return []
+            with open('vaults_registry.json', 'r') as f:
+                return json.load(f)
+        except Exception:
+            return []
+
+    @pyqtSlot(str, str, str, str, result=bool)
+    def api_register_vault(self, name, path, security_type, password):
+        import json, zipfile
+        vaults = self.api_get_vaults()
+        # Check if already exists
+        for v in vaults:
+            if v["name"] == name:
+                return False
+        
+        # Create physical empty vault
+        try:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            empty_zip_path = path + ".empty.zip"
+            with zipfile.ZipFile(empty_zip_path, 'w') as zf:
+                pass # Empty zip
+            
+            chave = _derivar_chave(password)
+            f_suite = Fernet(chave)
+            with open(empty_zip_path, 'rb') as f:
+                raw_data = f.read()
+            encrypted = f_suite.encrypt(raw_data)
+            
+            with open(path, 'wb') as f:
+                f.write(encrypted)
+            os.remove(empty_zip_path)
+            
+        except Exception:
+            return False
+
+        vaults.append({
+            "name": name,
+            "path": path,
+            "security_type": security_type,
+            "created_at": time.time()
+        })
+        try:
+            with open('vaults_registry.json', 'w') as f:
+                json.dump(vaults, f)
+            return True
+        except Exception:
+            return False
 
     @pyqtSlot(str, result=bool)
     def open_native_file(self, filepath):
@@ -340,7 +450,7 @@ class BatcomputerBridge(QObject):
         try:
             res = requests.get(f"{API_BASE_URL}/", timeout=2)
             if res.status_code == 200:
-                return {"online": True, "data": "API Batcomputer Online"}
+                return {"online": True, "data": "API Vexylo Online"}
             return {"online": False, "error": f"Erro HTTP {res.status_code}"}
         except Exception as e:
             return {"online": False, "error": "API Offline (Connection Refused)"}
@@ -446,115 +556,280 @@ class BatcomputerBridge(QObject):
         """Retorna o diretório home absoluto do utilizador"""
         return str(pathlib.Path.home().absolute())
 
-    # --- VIRTUAL CRYPTO VAULT ---
-    import base64
-
-    VAULT_FILE = 'vault.bin'
-    vault_mounted = False
-    vault_key = None
-    vault_tree = {}
-
-    
-    @pyqtSlot(str, result='QVariant')
-    def api_mount_vault(self, password):
-        global vault_mounted, vault_key, vault_tree
-        if not Fernet:
-            return {"success": False, "error": "Cryptography module missing."}
-        try:
-            key = _derivar_chave(password)
-            fernet = Fernet(key)
-        
-            if os.path.exists(VAULT_FILE):
-                with open(VAULT_FILE, 'rb') as f:
-                    encrypted_data = f.read()
-                if encrypted_data:
-                    decrypted_data = fernet.decrypt(encrypted_data)
-                    vault_tree = json.loads(decrypted_data.decode('utf-8'))
-                else:
-                    vault_tree = {}
-            else:
-                vault_tree = {}
-            
-            vault_key = key
-            vault_mounted = True
-            return {"success": True, "msg": "Vault mounted successfully."}
-        except Exception as e:
-            return {"success": False, "error": "Access Denied. Wrong password or corrupted vault."}
-
-    
-    @pyqtSlot(result='QVariant')
-    def api_unmount_vault(self):
-        global vault_mounted, vault_key, vault_tree
-        try:
-            if not vault_mounted or not vault_key:
-                return {"success": False, "error": "Vault is not mounted."}
-            
-            fernet = Fernet(vault_key)
-            data_json = json.dumps(vault_tree).encode('utf-8')
-            encrypted_data = fernet.encrypt(data_json)
-        
-            with open(VAULT_FILE, 'wb') as f:
-                f.write(encrypted_data)
-            
-            vault_tree.clear()
-            vault_key = None
-            vault_mounted = False
-            return {"success": True, "msg": "Vault securely unmounted."}
-        except Exception as e:
-            return {"success": False, "error": str(e)}
-
-    
-    @pyqtSlot(str, result='QVariant')
-    def api_move_to_vault(self, file_path):
-        global vault_mounted, vault_tree, vault_key
-        if not vault_mounted:
-            return {"success": False, "error": "Vault is not mounted."}
-        
-        try:
-            if not os.path.isfile(file_path):
-                return {"success": False, "error": "Only files can be moved to the vault currently."}
-            
-            filename = os.path.basename(file_path)
-            with open(file_path, 'rb') as f:
-                file_data = f.read()
-            
-            vault_tree[filename] = base64.b64encode(file_data).decode('utf-8')
-            os.remove(file_path)
-        
-            fernet = Fernet(vault_key)
-            data_json = json.dumps(vault_tree).encode('utf-8')
-            encrypted_data = fernet.encrypt(data_json)
-            with open(VAULT_FILE, 'wb') as f:
-                f.write(encrypted_data)
-            
-            return {"success": True, "msg": f"{filename} securely moved to Vault."}
-        except Exception as e:
-            return {"success": False, "error": str(e)}
-
+    # --- VEXYLO VAULT (VIRTUAL MOUNT) ---
+    import zipfile
     
     @pyqtSlot(str, str, result='QVariant')
+    def api_create_vexylo_vault(self, folder_path, password):
+        if not os.path.isdir(folder_path):
+            return {"success": False, "error": "Caminho não é uma pasta"}
+        try:
+            chave = _derivar_chave(password)
+            f_suite = Fernet(chave)
+
+            # 1. Zip the folder
+            zip_path = folder_path + ".tmp.zip"
+            shutil.make_archive(folder_path + ".tmp", 'zip', folder_path)
+
+            # 2. Encrypt the zip
+            with open(zip_path, 'rb') as f:
+                raw_data = f.read()
+            encrypted_data = f_suite.encrypt(raw_data)
+
+            # 3. Save as .vexylo
+            vault_path = folder_path + ".vexylo"
+            with open(vault_path, 'wb') as f:
+                f.write(encrypted_data)
+
+            # 4. Clean up
+            os.remove(zip_path)
+            shutil.rmtree(folder_path)
+
+            return {"success": True, "vault_path": vault_path}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    def _emit_progress(self, pct, phase_msg, file_msg=""):
+        # Safe escaping for JS
+        pm = phase_msg.replace("'", "\\'")
+        fm = file_msg.replace("'", "\\'")
+        script = f"if (typeof ui_update_smart_progress === 'function') ui_update_smart_progress({pct}, '{pm}', '{fm}');"
+        self.window.browser.page().runJavaScript(script)
+
+    @pyqtSlot(str, str, str, result='QVariant')
+    def api_mount_vexylo_vault(self, name, vault_path, password):
+        if not os.path.isfile(vault_path) or not vault_path.endswith('.vexylo'):
+            return {"success": False, "error": "Caminho não é um cofre Vexylo válido"}
+        
+        self.window.browser.page().runJavaScript(f"if (typeof ui_show_smart_progress === 'function') ui_show_smart_progress('[ UNLOCKING VAULT: {name} ]');")
+        self._emit_progress(0, "PHASE 1: DESENCRIPTAÇÃO", "A Ler Ficheiro Encriptado...")
+        
+        try:
+            chave = _derivar_chave(password)
+            f_suite = Fernet(chave)
+
+            # 1. Read and decrypt
+            with open(vault_path, 'rb') as f:
+                encrypted_data = f.read()
+            
+            self._emit_progress(10, "PHASE 1: DESENCRIPTAÇÃO", "A Desencriptar Bloco de Dados (AES-256)...")
+            
+            try:
+                decrypted_data = f_suite.decrypt(encrypted_data)
+            except Exception:
+                self.window.browser.page().runJavaScript("if (typeof ui_hide_smart_progress === 'function') ui_hide_smart_progress();")
+                return {"success": False, "error": "Password incorreta ou cofre corrompido."}
+
+            self._emit_progress(25, "PHASE 2: PREPARAÇÃO I/O", "A Preparar Memória Virtual...")
+
+            # 2. Save decrypted to tmp zip
+            tmp_zip = vault_path + ".tmp.zip"
+            with open(tmp_zip, 'wb') as f:
+                f.write(decrypted_data)
+
+            # 3. Extract zip to hidden mount folder with Smart Chunking
+            home_dir = os.path.expanduser("~")
+            mounts_dir = os.path.join(home_dir, ".vexylo_mounts")
+            os.makedirs(mounts_dir, exist_ok=True)
+            
+            folder_name = name
+            mount_path = os.path.join(mounts_dir, folder_name)
+            
+            if os.path.exists(mount_path):
+                shutil.rmtree(mount_path)
+            os.makedirs(mount_path)
+
+            with zipfile.ZipFile(tmp_zip, 'r') as zip_ref:
+                file_list = zip_ref.infolist()
+                total_files = len(file_list)
+                
+                # Phase 2 starts at 25% and goes up to 100%
+                for i, file_info in enumerate(file_list):
+                    zip_ref.extract(file_info, mount_path)
+                    
+                    if total_files > 0:
+                        chunk_pct = 25 + ((i + 1) / total_files) * 75
+                        self._emit_progress(chunk_pct, "PHASE 2: PROCESSAMENTO (EXTRAÇÃO)", f"{file_info.filename}")
+            
+            os.remove(tmp_zip)
+            
+            self._emit_progress(100, "CONCLUÍDO", "Cofre montado com segurança.")
+            import time
+            time.sleep(0.5) # Give UI time to show 100%
+            self.window.browser.page().runJavaScript("if (typeof ui_hide_smart_progress === 'function') ui_hide_smart_progress();")
+            
+            return {"success": True, "mount_path": mount_path}
+        except Exception as e:
+            self.window.browser.page().runJavaScript("if (typeof ui_hide_smart_progress === 'function') ui_hide_smart_progress();")
+            return {"success": False, "error": str(e)}
+
+    @pyqtSlot(str, str, str, str, result='QVariant')
+    def api_transfer_to_vault(self, target_path, vault_name, vault_path, password):
+        if not os.path.exists(target_path):
+            return {"success": False, "error": "Alvo não existe"}
+            
+        self.window.browser.page().runJavaScript(f"if (typeof ui_show_smart_progress === 'function') ui_show_smart_progress('[ TRANSFERRING TO: {vault_name} ]');")
+        self._emit_progress(0, "PHASE 1: DESENCRIPTAÇÃO", "A Inicializar...")
+        
+        try:
+            chave = _derivar_chave(password)
+            f_suite = Fernet(chave)
+
+            # 1. Decrypt existing vault
+            with open(vault_path, 'rb') as f:
+                encrypted_data = f.read()
+            self._emit_progress(10, "PHASE 1: DESENCRIPTAÇÃO", "A Desencriptar Cofre...")
+            try:
+                decrypted_data = f_suite.decrypt(encrypted_data)
+            except Exception:
+                self.window.browser.page().runJavaScript("if (typeof ui_hide_smart_progress === 'function') ui_hide_smart_progress();")
+                return {"success": False, "error": "Password incorreta ou cofre corrompido."}
+
+            self._emit_progress(25, "PHASE 2: I/O & CHUNKING", "A Preparar Ficheiros...")
+
+            # 2. Extract decrypted data into a tmp folder
+            home_dir = os.path.expanduser("~")
+            tmp_mount_dir = os.path.join(home_dir, ".vexylo_tmp_transfer_" + vault_name)
+            if os.path.exists(tmp_mount_dir):
+                shutil.rmtree(tmp_mount_dir)
+            os.makedirs(tmp_mount_dir)
+            
+            tmp_zip_read = vault_path + ".tmp.read.zip"
+            with open(tmp_zip_read, 'wb') as f:
+                f.write(decrypted_data)
+            
+            with zipfile.ZipFile(tmp_zip_read, 'r') as zip_ref:
+                zip_ref.extractall(tmp_mount_dir)
+            os.remove(tmp_zip_read)
+
+            # 3. Move target_path into the extracted folder
+            dest = os.path.join(tmp_mount_dir, os.path.basename(target_path))
+            if os.path.isdir(target_path):
+                if os.path.exists(dest): shutil.rmtree(dest)
+                shutil.copytree(target_path, dest)
+            else:
+                shutil.copy2(target_path, dest)
+
+            # 4. Zip the tmp folder (This is where the heavy Smart Chunking >=50% happens)
+            zip_path = tmp_mount_dir + ".tmp.write.zip"
+            total_size = 0
+            all_files = []
+            for root, dirs, files in os.walk(tmp_mount_dir):
+                for f in files:
+                    fp = os.path.join(root, f)
+                    total_size += os.path.getsize(fp)
+                    all_files.append(fp)
+            
+            processed_size = 0
+            with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                for fp in all_files:
+                    arcname = os.path.relpath(fp, tmp_mount_dir)
+                    zipf.write(fp, arcname)
+                    processed_size += os.path.getsize(fp)
+                    if total_size > 0:
+                        # Phase 2 takes 50% (from 25% to 75%)
+                        chunk_pct = 25 + (processed_size / total_size) * 50
+                        self._emit_progress(chunk_pct, "PHASE 2: PROCESSAMENTO (COMPRESSÃO)", arcname)
+
+            self._emit_progress(75, "PHASE 3: ENCRIPTAÇÃO", "A Ler Bloco de Dados Zipado...")
+
+            # 5. Encrypt the new zip (Takes up another 25%, to 100%)
+            with open(zip_path, 'rb') as f:
+                raw_data = f.read()
+                
+            self._emit_progress(85, "PHASE 3: ENCRIPTAÇÃO", "A Encriptar Bloco (AES-256)...")
+            encrypted_data = f_suite.encrypt(raw_data)
+
+            self._emit_progress(95, "PHASE 3: ESCRITA DISCO", "A Gravar Cofre Permanente...")
+            with open(vault_path, 'wb') as f:
+                f.write(encrypted_data)
+
+            # 6. Clean up
+            os.remove(zip_path)
+            shutil.rmtree(tmp_mount_dir)
+            
+            # Delete original file safely since it was moved to vault
+            if os.path.isdir(target_path):
+                shutil.rmtree(target_path)
+            else:
+                os.remove(target_path)
+
+            self._emit_progress(100, "CONCLUÍDO", "Ficheiros guardados em segurança no cofre.")
+            import time
+            time.sleep(0.5)
+            self.window.browser.page().runJavaScript("if (typeof ui_hide_smart_progress === 'function') ui_hide_smart_progress();")
+
+            return {"success": True, "vault_path": vault_path}
+        except Exception as e:
+            self.window.browser.page().runJavaScript("if (typeof ui_hide_smart_progress === 'function') ui_hide_smart_progress();")
+            return {"success": False, "error": str(e)}
+
+    @pyqtSlot(str, str, str, str, result='QVariant')
+    def api_unmount_vexylo_vault(self, name, mount_path, vault_path, password):
+        if not os.path.exists(mount_path):
+            return {"success": False, "error": "Cofre não está montado"}
+        
+        self.window.browser.page().runJavaScript(f"if (typeof ui_show_smart_progress === 'function') ui_show_smart_progress('[ LOCKING VAULT: {name} ]');")
+        self._emit_progress(0, "PHASE 1: PREPARAÇÃO", "A Inicializar Compressão...")
+        
+        try:
+            chave = _derivar_chave(password)
+            f_suite = Fernet(chave)
+
+            # 1. Zip the mount folder manually for Smart Chunking
+            zip_path = mount_path + ".tmp.zip"
+            
+            # Count total files for math
+            total_size = 0
+            all_files = []
+            for root, dirs, files in os.walk(mount_path):
+                for f in files:
+                    fp = os.path.join(root, f)
+                    total_size += os.path.getsize(fp)
+                    all_files.append(fp)
+            
+            processed_size = 0
+            with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                for fp in all_files:
+                    arcname = os.path.relpath(fp, mount_path)
+                    zipf.write(fp, arcname)
+                    processed_size += os.path.getsize(fp)
+                    if total_size > 0:
+                        # Phase 2 (Zipping) takes 50% of the progress bar (from 0 to 50%)
+                        chunk_pct = (processed_size / total_size) * 50
+                        self._emit_progress(chunk_pct, "PHASE 2: PROCESSAMENTO (COMPRESSÃO)", arcname)
+
+            self._emit_progress(50, "PHASE 3: ENCRIPTAÇÃO", "A Ler Bloco de Dados Zipado...")
+
+            # 2. Encrypt the zip (Takes up another 25%, to 75%)
+            with open(zip_path, 'rb') as f:
+                raw_data = f.read()
+                
+            self._emit_progress(75, "PHASE 3: ENCRIPTAÇÃO", "A Encriptar Bloco (AES-256)...")
+            encrypted_data = f_suite.encrypt(raw_data)
+
+            # 3. Save as .vexylo (Final 25%, to 100%)
+            self._emit_progress(85, "PHASE 3: ESCRITA DISCO", "A Gravar Cofre Permanente...")
+            with open(vault_path, 'wb') as f:
+                f.write(encrypted_data)
+
+            # 4. Clean up
+            os.remove(zip_path)
+            shutil.rmtree(mount_path)
+
+            self._emit_progress(100, "CONCLUÍDO", "Cofre trancado em segurança.")
+            import time
+            time.sleep(0.5)
+            self.window.browser.page().runJavaScript("if (typeof ui_hide_smart_progress === 'function') ui_hide_smart_progress();")
+
+            return {"success": True, "vault_path": vault_path}
+        except Exception as e:
+            self.window.browser.page().runJavaScript("if (typeof ui_hide_smart_progress === 'function') ui_hide_smart_progress();")
+            return {"success": False, "error": str(e)}
+
+    @pyqtSlot(str, str, result='QVariant')
     def list_directory_contents(self, target_path, show_hidden=False):
-        """Lista ficheiros e pastas de um diretório específico, interior de ZIP ou do Cofre Virtual"""
-        global vault_mounted, vault_tree
-        if target_path == "VAULT://":
-            if not vault_mounted:
-                return {"success": False, "error": "Vault is not mounted."}
-            items = []
-            for filename, b64_data in vault_tree.items():
-                try:
-                    size_b = len(base64.b64decode(b64_data.encode('utf-8')))
-                    size_mb = round(size_b / (1024 * 1024), 2)
-                    size_kb = round(size_b / 1024, 1)
-                    tamanho = f"{size_mb} MB" if size_mb >= 1 else f"{size_kb} KB"
-                    items.append({
-                        "name": filename,
-                        "is_dir": False,
-                        "size": tamanho,
-                        "path": f"VAULT://{filename}",
-                        "extension": pathlib.Path(filename).suffix
-                    })
-                except: pass
-            return {"success": True, "path": "VAULT://", "items": items}
+        """Lista ficheiros e pastas de um diretório específico ou interior de ZIP"""
     
         try:
             normalized_path = target_path.replace('\\', '/')
@@ -964,7 +1239,7 @@ class BatcomputerBridge(QObject):
     # ----------------------------------------------------
     if __name__ == '__main__':
         print("==================================================")
-        print(" INICIANDO NEXORA HUB & BATCOMPUTER UPLINK ")
+        print(" INICIANDO VEXYLO DASHBOARD UPLINK ")
         print(f" URL Alvo: {API_BASE_URL}")
         print("==================================================")
     
@@ -986,10 +1261,10 @@ class BatcomputerBridge(QObject):
     # Na Fase 2, instalaremos o QWebChannel para restaurar o IO com JS.
     # =========================================================================
 
-class BatcomputerWindow(QMainWindow):
+class VexyloWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("BATCOMPUTER // DASHBOARD v1.0")
+        self.setWindowTitle("VEXYLO DASHBOARD v1.0")
         self.resize(1280, 720)
         
         # FORÇAR O ÍCONE NATIVO NA BARRA DE TAREFAS
@@ -1009,7 +1284,7 @@ class BatcomputerWindow(QMainWindow):
         
         # Configurar o QWebChannel antes de carregar a página
         self.channel = QWebChannel()
-        self.bridge = BatcomputerBridge(self)
+        self.bridge = VexyloBridge(self)
         self.channel.registerObject("backend", self.bridge)
         self.browser.page().setWebChannel(self.channel)
 
@@ -1062,8 +1337,8 @@ if __name__ == "__main__":
     if os.path.exists(icon_path):
         app.setWindowIcon(QIcon(icon_path))
         
-    print("[DEBUG] A instanciar BatcomputerWindow...")
-    window = BatcomputerWindow()
+    print("[DEBUG] A instanciar VexyloWindow...")
+    window = VexyloWindow()
     print("[DEBUG] A mostrar janela...")
     window.show()
     print("[DEBUG] A iniciar loop de eventos (app.exec())...")

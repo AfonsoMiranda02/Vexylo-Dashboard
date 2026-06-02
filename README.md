@@ -1,7 +1,7 @@
-# BatComputer Core (v1.0) 🦇
+# Vexylo Dashboard Core (v1.0) 🦇
 
 ## 1. 🦇 VISÃO GERAL & ARQUITETURA
-O BatComputer é um Mini-SO tático local focado em maximizar a produtividade e a gestão do dia a dia. Operando de forma 100% offline, funciona como o derradeiro utilitário de controlo.
+O Vexylo Dashboard é um Mini-SO tático local focado em maximizar a produtividade e a gestão do dia a dia. Operando de forma 100% offline, funciona como o derradeiro utilitário de controlo.
 
 **Ecossistema Híbrido:**
 O projeto divide-se numa arquitetura moderna e isolada:
@@ -12,7 +12,7 @@ O projeto divide-se numa arquitetura moderna e isolada:
   - **Portainer & Docker Socket Proxy:** Gestão segura do ecossistema na porta 2080. O acesso ao socket do Docker é filtrado e protegido pelo proxy para garantir que apenas os serviços com a label do projeto têm permissões.
 
 ## 2. 📴 REQUISITOS DO SISTEMA (Deteção Automática)
-A espinha dorsal (API) do BatComputer está programada para se adaptar autonomamente à máquina onde corre. No arranque, realiza uma triagem granular do Sistema Operativo:
+A espinha dorsal (API) do Vexylo Dashboard está programada para se adaptar autonomamente à máquina onde corre. No arranque, realiza uma triagem granular do Sistema Operativo:
 
 - **Windows:** Detetado instantaneamente via chamadas ao sistema (compatível com execução em ambientes PowerShell/CMD). Mapeia ferramentas como Winget/Choco.
 - **Linux (Agnóstico):** Se detetar kernel Linux, o sistema lê o ficheiro `/etc/os-release` para identificar a distribuição exata. Com esta informação, mapeia de forma transparente o Package Manager nativo da distro (pacman, apt, dnf, zypper, apk, etc.).
@@ -53,7 +53,7 @@ docker compose down && docker compose up --build -d
 ```
 
 **Tabela de Equivalência de Comandos (Utility Belt):**
-O BatComputer adapta dinamicamente as suas rotinas internas (via `/api/nomad/os`) consoante a arquitetura detetada:
+O Vexylo Dashboard adapta dinamicamente as suas rotinas internas (via `/api/nomad/os`) consoante a arquitetura detetada:
 
 | Família de Distros | Distribuições Comuns | Comando de Instalação | Comando de Remoção |
 | :--- | :--- | :--- | :--- |

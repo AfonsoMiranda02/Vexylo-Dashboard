@@ -24,8 +24,8 @@ def seed_database(db: Session):
     if db.query(models.Shortcut).count() == 0:
         shortcuts = [
             models.Shortcut(name="Limpar Docker", command_or_path="docker system prune -a --volumes -f", description="Limpa todos os containers, imagens e volumes não usados."),
-            models.Shortcut(name="Logs da API", command_or_path="docker logs -f batcomputer_api", description="Acompanha os logs da API em tempo real."),
-            models.Shortcut(name="Restart DB", command_or_path="docker restart batcomputer_db", description="Reinicia o serviço da base de dados PostgreSQL.")
+            models.Shortcut(name="Logs da API", command_or_path="docker logs -f vexylo_api", description="Acompanha os logs da API em tempo real."),
+            models.Shortcut(name="Restart DB", command_or_path="docker restart vexylo_db", description="Reinicia o serviço da base de dados PostgreSQL.")
         ]
         db.add_all(shortcuts)
         

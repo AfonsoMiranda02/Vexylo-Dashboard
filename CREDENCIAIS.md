@@ -1,10 +1,10 @@
-# 🛡️ COFRE DE CREDENCIAIS - NEXORA CORE (BATCOMPUTER)
+# 🛡️ COFRE DE CREDENCIAIS - VEXYLO SOFTWARE (VEXYLO DASHBOARD)
 
 Este documento contém a listagem completa de todas as chaves, passwords e tokens configurados para o funcionamento de todo o ecossistema (Frontend, Backend, Docker e Base de Dados).
 
 ---
 
-## 1. 🔐 Ecrã de Bloqueio UI (Nexora Core)
+## 1. 🔐 Ecrã de Bloqueio UI (Vexylo Dashboard)
 O portal de entrada principal da aplicação desktop que bloqueia o HUD.
 - **Tipo:** System API Key (Master)
 - **Chave Atual:** `4053cbd5-0eab-46c5-9d0a-9c1a49e4f0ab`

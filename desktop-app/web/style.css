@@ -1073,3 +1073,5 @@ body {
     text-shadow: 0 0 8px var(--neon-cyan);
     text-decoration: underline;
 }
+
+#tab-vaults.active { display: flex; flex-direction: column; }

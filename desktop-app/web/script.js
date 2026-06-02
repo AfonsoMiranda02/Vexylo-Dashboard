@@ -1,5 +1,5 @@
 /* ----------------------------------------------------
-   NEXORA HUD COGNITIVE INTERFACE CONTROLLER (JS)
+   VEXYLO DASHBOARD HUD COGNITIVE INTERFACE CONTROLLER (JS)
    ---------------------------------------------------- */
 
 
@@ -24,49 +24,82 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 });
 
-function initSystemAuth() {
-    const modal = document.getElementById("sys-api-key-modal");
-    const input = document.getElementById("sys-api-key-input");
-    const btn = document.getElementById("btn-unlock-system");
-    const errorMsg = document.getElementById("sys-api-error");
+async function initSystemAuth() {
+    const gateway = document.getElementById("sys-auth-gateway");
+    const panelReg = document.getElementById("auth-panel-register");
+    const panelApi = document.getElementById("auth-panel-apikey");
+    const panelLog = document.getElementById("auth-panel-login");
 
-    if(!modal) {
+    if(!gateway) {
         startSystemCore();
         return;
     }
 
-    input.focus();
-
-    const tryAuth = async () => {
-        const key = input.value;
-        if(!key) return;
+    const hasAccount = await callBackend('api_has_account');
+    
+    if (!hasAccount) {
+        // First Run: OOBE Account Creation
+        panelReg.style.display = "block";
+        document.getElementById("btn-register-account").addEventListener("click", async () => {
+            const u = document.getElementById("reg-username").value.trim();
+            const p = document.getElementById("reg-password").value.trim();
+            if(!u || !p) return;
+            const success = await callBackend('api_register_account', u, p);
+            if(success) {
+                panelReg.style.display = "none";
+                panelApi.style.display = "block";
+            } else {
+                document.getElementById("reg-error").style.display = "block";
+            }
+        });
         
-        btn.innerHTML = "[ VERIFYING... ]";
-        const isValid = await callBackend('api_verificar_api_key', key);
-        
-        if (isValid) {
-            modal.style.transition = "opacity 0.5s";
-            modal.style.opacity = "0";
-            setTimeout(() => {
-                modal.style.display = "none";
-                startSystemCore();
-            }, 500);
-        } else {
-            errorMsg.style.display = "block";
-            input.style.borderColor = "var(--neon-magenta)";
-            btn.innerHTML = "[ AUTHENTICATE ]";
-            input.value = "";
-            setTimeout(() => {
-                errorMsg.style.display = "none";
-                input.style.borderColor = "var(--neon-cyan)";
-            }, 2000);
-        }
-    };
+        // OOBE API Key Step
+        document.getElementById("btn-save-apikey").addEventListener("click", async () => {
+            const k = document.getElementById("setup-apikey").value.trim();
+            if(!k) return;
+            await callBackend('api_save_api_key', k);
+            unlockGateway();
+        });
+        document.getElementById("btn-skip-apikey").addEventListener("click", () => {
+            document.getElementById("apikey-warning").style.display = "block";
+            setTimeout(unlockGateway, 2000);
+        });
 
-    btn.addEventListener("click", tryAuth);
-    input.addEventListener("keypress", (e) => {
-        if(e.key === "Enter") tryAuth();
-    });
+    } else {
+        // Normal Boot: Login
+        panelLog.style.display = "block";
+        const loginUser = document.getElementById("login-username");
+        const loginPass = document.getElementById("login-password");
+        const errLog = document.getElementById("login-error");
+        
+        const tryLogin = async () => {
+            const u = loginUser.value.trim();
+            const p = loginPass.value.trim();
+            if(!u || !p) return;
+            const success = await callBackend('api_login_account', u, p);
+            if(success) {
+                unlockGateway();
+            } else {
+                errLog.style.display = "block";
+                loginPass.value = "";
+                setTimeout(() => errLog.style.display = "none", 2000);
+            }
+        };
+        
+        document.getElementById("btn-login-account").addEventListener("click", tryLogin);
+        loginPass.addEventListener("keypress", (e) => {
+            if(e.key === "Enter") tryLogin();
+        });
+    }
+
+    function unlockGateway() {
+        gateway.style.transition = "opacity 0.5s";
+        gateway.style.opacity = "0";
+        setTimeout(() => {
+            gateway.style.display = "none";
+            startSystemCore();
+        }, 500);
+    }
 }
 
 function startSystemCore() {
@@ -79,6 +112,8 @@ function startSystemCore() {
     initFileCreation();
     initSearchAndView();
     initVaultToggle();
+    initVaultFileCreation();
+    initVaultSearchAndView();
     initContextMenu();
     loadShortcuts();
     initNanoEditorShortcuts();
@@ -668,7 +703,7 @@ async function render_files(path) {
                 tr.addEventListener("mouseleave", () => tr.style.background = "");
 
                 // Interceptar Context Menu
-                tr.addEventListener('contextmenu', (e) => {
+                tr.addEventListener('contextmenu', async (e) => {
                     e.preventDefault();
                     context_menu_target_path = item.path;
                     selected_row_element = tr;
@@ -676,6 +711,19 @@ async function render_files(path) {
                     
                     const menu = document.getElementById("custom-context-menu");
                     if(menu) {
+                        // Check if Vaults exist
+                        const vaults = await callBackend('api_get_vaults');
+                        const hideBtn = document.getElementById("ctx-hide-vexylo");
+                        if (hideBtn) {
+                            if (!vaults || vaults.length === 0) {
+                                hideBtn.style.opacity = "0.3";
+                                hideBtn.style.pointerEvents = "none";
+                            } else {
+                                hideBtn.style.opacity = "1";
+                                hideBtn.style.pointerEvents = "auto";
+                            }
+                        }
+
                         menu.style.display = "block";
                         menu.style.left = e.pageX + "px";
                         menu.style.top = e.pageY + "px";
@@ -1142,69 +1190,237 @@ function initSearchAndView() {
     }
 }
 
-// --- Nexus Phase 1 & 2 Logic ---
+// --- Vault Manager Logic ---
 function initVaultToggle() {
     const btn = document.getElementById("btn-toggle-vault");
-    const modal = document.getElementById("vault-auth-modal");
-    const pwdInput = document.getElementById("vault-password");
+    const tabVaults = document.getElementById("tab-vaults");
+    const btnCloseManager = document.getElementById("btn-close-vault-manager");
     
-    if(!btn || !modal) return;
+    if(!btn || !tabVaults) return;
     
     btn.addEventListener("click", async () => {
-        if(isVaultMounted) {
-            // Unmount
-            const res = await callBackend('api_unmount_vault');
-            logConsole(res.msg || res.error);
-            isVaultMounted = false;
-            btn.style.color = "rgba(255, 255, 255, 0.4)";
-            btn.style.textShadow = "none";
-            render_files(await callBackend('get_home_directory'));
-        } else {
-            // Open Mount Modal
-            modal.style.display = "flex";
-            pwdInput.value = "";
-            pwdInput.focus();
+        // Require Master Password before opening Vault Manager
+        let masterPwd = await promptCryptoPassword("[ VAULT ACCESS REQUIRED ]", "> ENTER MASTER APP PASSWORD:");
+        if (!masterPwd) return;
+
+        const isValid = await callBackend('api_verify_master_password', masterPwd);
+        if (!isValid) {
+            logConsole("[ERRO] Password Mestra Inválida. Acesso ao Cofre Negado.");
+            return;
         }
-    });
-
-    document.getElementById("btn-vault-cancel").addEventListener("click", () => {
-        modal.style.display = "none";
-    });
-
-    document.getElementById("btn-vault-mount").addEventListener("click", async () => {
-        const pwd = pwdInput.value;
-        if(!pwd) return;
         
-        const res = await callBackend('api_mount_vault', pwd);
-        if(res.success) {
-            logConsole(res.msg);
-            isVaultMounted = true;
-            btn.style.color = "var(--neon-green)";
-            btn.style.textShadow = "0 0 10px var(--neon-green)";
-            modal.style.display = "none";
-            render_files("VAULT://");
+        // Load Vaults
+        await refreshVaultsList();
+        
+        // Show Vault Manager as a tab
+        const tabPanes = document.querySelectorAll(".tab-pane");
+        const tabButtons = document.querySelectorAll(".nav-btn");
+        
+        tabButtons.forEach(b => b.classList.remove("active"));
+        
+        tabPanes.forEach(pane => {
+            pane.classList.remove("active");
+            if (pane.id === "tab-vaults") {
+                pane.classList.add("active");
+            }
+        });
+        
+        // Clean up iframe background consumption
+        const apiPanel = document.getElementById("api-panel-container");
+        if(apiPanel) apiPanel.style.display = "none";
+        
+        // Render files view as well so background doesn't stay stuck if we came from there
+    });
+
+    if(btnCloseManager) {
+        btnCloseManager.addEventListener("click", () => {
+            // Close Vaults tab and return to Monitor
+            document.querySelector('.nav-btn[data-tab="tab-monitor"]').click();
+        });
+    }
+
+    // Vault Explorer Events
+    const btnVaultUp = document.getElementById("btn-vault-up-dir");
+    if(btnVaultUp) {
+        btnVaultUp.addEventListener("click", () => {
+            if (vault_current_path) {
+                const parentPath = vault_current_path.substring(0, vault_current_path.lastIndexOf('/')) || vault_current_path.substring(0, vault_current_path.lastIndexOf('\\'));
+                if (parentPath && parentPath.length > 2) {
+                    render_vault_files(parentPath);
+                }
+            }
+        });
+    }
+
+    const btnVaultUnmount = document.getElementById("btn-vault-unmount");
+    if(btnVaultUnmount) {
+        btnVaultUnmount.addEventListener("click", async () => {
+            if(!isVaultMounted) return;
+            let pwd = await promptCryptoPassword("[ VEXYLO VAULT: LOCK ]", "> CONFIRMAR PASSWORD PARA FECHAR:");
+            if(!pwd) return;
+            
+            logConsole(`A trancar cofre Vexylo e a guardar alterações...`);
+            const res = await callBackend('api_unmount_vexylo_vault', window.active_vault_name, window.active_mount_path, window.active_vault_path, pwd);
+            if(res && res.success) {
+                logConsole(`[SUCESSO] Vault Trancado em Segurança: ${res.vault_path}`);
+                isVaultMounted = false;
+                document.getElementById("vault-explorer-container").style.display = "none";
+                document.getElementById("vaults-list-container").style.display = "grid";
+                await refreshVaultsList();
+            } else {
+                logConsole(`[ERRO] Falha ao trancar Vault: ${res ? res.error : 'Erro desconhecido'}`);
+            }
+        });
+    }
+
+    // Create Vault Logic
+    const btnCreateVault = document.getElementById("btn-create-vault");
+    const modalCreate = document.getElementById("create-vault-modal");
+    const btnConfirmCreate = document.getElementById("btn-confirm-create-vault");
+    const btnCancelCreate = document.getElementById("btn-cancel-create-vault");
+
+    btnCreateVault.addEventListener("click", () => {
+        modalCreate.style.display = "flex";
+    });
+
+    btnCancelCreate.addEventListener("click", () => {
+        modalCreate.style.display = "none";
+    });
+
+    btnConfirmCreate.addEventListener("click", async () => {
+        const name = document.getElementById("new-vault-name").value.trim();
+        const pwd = document.getElementById("new-vault-pass").value.trim();
+        const genKey = document.getElementById("new-vault-gen-key").checked;
+        const initialFolder = document.getElementById("new-vault-initial-folder").value.trim();
+
+        if (!name || !pwd) {
+            logConsole("Nome e Password são obrigatórios para o Vault.");
+            return;
+        }
+
+        const secType = genKey ? "password_and_key" : "password_only";
+        const vaultPath = `C:/VexyloVaults/${name}.vexylo`;
+        const res = await callBackend('api_register_vault', name, vaultPath, secType, pwd);
+        
+        if (res) {
+            logConsole(`[SUCESSO] Vault '${name}' registado!`);
+            
+            if (initialFolder) {
+                logConsole(`A transferir pasta inicial '${initialFolder}' para o novo cofre...`);
+                // Disable modal inputs to prevent accidental clicks
+                btnConfirmCreate.disabled = true;
+                btnCancelCreate.disabled = true;
+                const trfRes = await callBackend('api_transfer_to_vault', initialFolder, name, vaultPath, pwd);
+                if(trfRes && trfRes.success) {
+                    logConsole(`[SUCESSO] Pasta transferida para o cofre com sucesso.`);
+                } else {
+                    logConsole(`[ERRO] Falha ao transferir pasta inicial: ${trfRes ? trfRes.error : 'Erro desconhecido'}`);
+                }
+                btnConfirmCreate.disabled = false;
+                btnCancelCreate.disabled = false;
+            }
+            
+            modalCreate.style.display = "none";
+            document.getElementById("new-vault-name").value = "";
+            document.getElementById("new-vault-pass").value = "";
+            document.getElementById("new-vault-initial-folder").value = "";
+            await refreshVaultsList();
         } else {
-            logConsole(`Vault Error: ${res.error}`);
-            pwdInput.style.borderColor = "var(--neon-magenta)";
-            setTimeout(() => pwdInput.style.borderColor = "var(--neon-cyan)", 1000);
+            logConsole(`[ERRO] Falha ao registar Vault '${name}'. Nome já existe?`);
         }
     });
 }
 
-async function extractFromVault(filePath) {
-    const targetDir = await callBackend('get_home_directory'); // ou um prompt
-    const filename = filePath.split('//')[1];
-    const res = await callBackend('api_extract_from_vault', filename, targetDir);
-    logConsole(res.msg || res.error);
-    render_files("VAULT://");
+async function refreshVaultsList() {
+    const listContainer = document.getElementById("vaults-list-container");
+    if (!listContainer) return;
+    
+    listContainer.innerHTML = "<div style='color:var(--neon-cyan);'>A carregar cofres...</div>";
+    
+    const vaults = await callBackend('api_get_vaults');
+    listContainer.innerHTML = "";
+    
+    if (!vaults || vaults.length === 0) {
+        listContainer.innerHTML = `
+            <div style="grid-column: 1 / -1; text-align: center; color: rgba(255,255,255,0.3); padding: 50px; font-family: var(--font-mono);">
+                NENHUM COFRE DETETADO NO SISTEMA.<br>CLIQUE EM [ + NEW VAULT ] PARA INICIAR.
+            </div>
+        `;
+        // Force OOBE of Vault (open create modal directly if 0 vaults)
+        document.getElementById("create-vault-modal").style.display = "flex";
+        return;
+    }
+
+    vaults.forEach(v => {
+        const card = document.createElement("div");
+        card.style.border = "1px solid var(--neon-cyan)";
+        card.style.background = "rgba(0, 240, 255, 0.05)";
+        card.style.padding = "15px";
+        card.style.display = "flex";
+        card.style.flexDirection = "column";
+        card.style.gap = "10px";
+        
+        card.innerHTML = `
+            <h4 style="color: var(--neon-cyan); font-family: var(--font-orbitron); margin: 0; font-size: 1.1rem;">🛡️ ${v.name}</h4>
+            <div style="color: rgba(255,255,255,0.5); font-family: var(--font-mono); font-size: 0.75rem; word-break: break-all;">${v.path}</div>
+            <div style="color: var(--neon-yellow); font-family: var(--font-mono); font-size: 0.8rem;">Security: ${v.security_type === 'password_and_key' ? 'PWD + .KEY' : 'PWD ONLY'}</div>
+            <div style="display: flex; gap: 10px; margin-top: auto; padding-top: 10px;">
+                <button class="btn-micro cyan" style="flex: 1;" onclick="mountVaultUI('${v.name}', '${v.path}')">[ MOUNT ]</button>
+            </div>
+        `;
+        listContainer.appendChild(card);
+    });
 }
 
-async function deleteFromVault(filename) {
-    if(confirm(`Permanentemente eliminar ${filename} do cofre?`)) {
-        const res = await callBackend('api_delete_from_vault', filename);
-        logConsole(res.msg || res.error);
-        render_files("VAULT://");
+async function mountVaultUI(name, path) {
+    let pwd = await promptCryptoPassword(`[ UNLOCK VAULT: ${name} ]`, "> ENTER VAULT PASSWORD:");
+    if (!pwd) return;
+    logConsole(`A iniciar montagem do Vault: ${name}...`);
+    // Smart chunking backend call
+    const res = await callBackend('api_mount_vexylo_vault', name, path, pwd);
+    if(res && res.success) {
+        logConsole(`[SUCESSO] Vault Montado. Os ficheiros seguros estão acessíveis em: ${res.mount_path}`);
+        render_vault_files(res.mount_path);
+        isVaultMounted = true;
+        
+        // Hide vaults list, show vault explorer
+        document.getElementById("vaults-list-container").style.display = "none";
+        document.getElementById("vault-explorer-container").style.display = "flex";
+        
+        // Save global vault context for unmounting
+        window.active_vault_name = name;
+        window.active_vault_path = path;
+        window.active_mount_path = res.mount_path;
+    } else {
+        logConsole(`[ERRO] Falha ao montar Vault: ${res ? res.error : 'Erro desconhecido'}`);
     }
+}
+
+// --- Smart Progress Engine Bridge ---
+function ui_show_smart_progress(title) {
+    document.getElementById("vault-smart-progress-modal").style.display = "flex";
+    document.getElementById("smart-progress-title").textContent = title;
+    document.getElementById("smart-progress-phase").textContent = "INITIATING PROTOCOL...";
+    document.getElementById("smart-progress-pct").textContent = "0.00%";
+    document.getElementById("smart-progress-bar-fill").style.width = "0%";
+    document.getElementById("smart-progress-file").textContent = "> Preparando motor AES-256...";
+}
+
+function ui_update_smart_progress(pct, phase_msg, file_msg) {
+    // Note: pct is a float between 0 and 100
+    document.getElementById("smart-progress-pct").textContent = pct.toFixed(2) + "%";
+    document.getElementById("smart-progress-bar-fill").style.width = pct + "%";
+    
+    if (phase_msg) {
+        document.getElementById("smart-progress-phase").textContent = phase_msg;
+    }
+    if (file_msg) {
+        document.getElementById("smart-progress-file").textContent = "> " + file_msg;
+    }
+}
+
+function ui_hide_smart_progress() {
+    document.getElementById("vault-smart-progress-modal").style.display = "none";
 }
 
 function initContextMenu() {
@@ -1244,6 +1460,105 @@ function initContextMenu() {
         logConsole(res.msg || res.error);
         if(current_path) render_files(current_path);
         menu.style.display = "none";
+    });
+
+    document.getElementById("ctx-hide-vexylo").addEventListener("click", async () => {
+        if(!context_menu_target_path) return;
+        menu.style.display = "none";
+        
+        let confirmHide = confirm("Tem a certeza que quer enviar para o Vexylo Vault?\nIsto irá encriptar e apagar os ficheiros originais.");
+        if (!confirmHide) return;
+
+        // 1. Require Master App Password
+        let masterPwd = await promptCryptoPassword("[ VAULT ACCESS REQUIRED ]", "> ENTER MASTER APP PASSWORD:");
+        if(!masterPwd) return;
+        const isValid = await callBackend('api_verify_master_password', masterPwd);
+        if(!isValid) {
+            logConsole("[ERRO] Password Mestra Inválida. Acesso ao Cofre Negado.");
+            return;
+        }
+        
+        // 2. Select Target Vault
+        const vaults = await callBackend('api_get_vaults');
+        const selectModal = document.getElementById("select-vault-modal");
+        const listDiv = document.getElementById("select-vault-list");
+        
+        listDiv.innerHTML = "";
+        
+        let selectedVault = await new Promise((resolve) => {
+            selectModal.style.display = "flex";
+            
+            vaults.forEach(v => {
+                const btn = document.createElement("button");
+                btn.className = "btn-micro cyan";
+                btn.style.display = "block";
+                btn.style.width = "100%";
+                btn.style.marginBottom = "5px";
+                btn.style.textAlign = "left";
+                btn.textContent = `🛡️ ${v.name}`;
+                btn.onclick = () => {
+                    selectModal.style.display = "none";
+                    resolve(v);
+                };
+                listDiv.appendChild(btn);
+            });
+            
+            document.getElementById("btn-cancel-select-vault").onclick = () => {
+                selectModal.style.display = "none";
+                resolve(null);
+            };
+        });
+
+        if (!selectedVault) return;
+        
+        // 3. Prompt for the Target Vault Password
+        let vaultPwd = await promptCryptoPassword(`[ TARGET: ${selectedVault.name} ]`, "> ENTER VAULT PASSWORD:");
+        if(!vaultPwd) return;
+        
+        logConsole(`A iniciar transferência para cofre Vexylo: ${selectedVault.name}`);
+        
+        // 4. Start Smart Transfer (Phase 1, 2, 3 math executed in Backend)
+        const res = await callBackend('api_transfer_to_vault', context_menu_target_path, selectedVault.name, selectedVault.path, vaultPwd);
+        
+        if(res && res.success) {
+            logConsole(`[SUCESSO] Transferência concluída para o Vault: ${selectedVault.name}`);
+            if(current_path) render_files(current_path);
+        } else {
+            logConsole(`[ERRO] Falha ao transferir: ${res ? res.error : 'Erro desconhecido'}`);
+        }
+    });
+
+    document.getElementById("ctx-mount-vexylo").addEventListener("click", async () => {
+        if(!context_menu_target_path) return;
+        menu.style.display = "none";
+        
+        // Extract Name from .vexylo path
+        let vaultName = context_menu_target_path.split('\\').pop().split('/').pop().replace('.vexylo', '');
+        
+        mountVaultUI(vaultName, context_menu_target_path);
+    });
+
+    document.getElementById("ctx-unmount-vexylo").addEventListener("click", async () => {
+        if(!context_menu_target_path) return;
+        menu.style.display = "none";
+        
+        let pwd = await promptCryptoPassword("[ VEXYLO VAULT: LOCK ]", "> CONFIRMAR PASSWORD PARA FECHAR:");
+        if(!pwd) return;
+        
+        // Assumindo que a pasta selecionada É o próprio mount_path
+        let vault_file_path = context_menu_target_path.split('.vexylo_mounts')[0] + context_menu_target_path.split('.vexylo_mounts')[1].replace(/^[/\\]+/, '') + ".vexylo";
+        // Prompt simplificado:
+        let original_vault_name = prompt("Qual era o caminho original do ficheiro .vexylo? (ex: C:/.../Pasta.vexylo)", context_menu_target_path + ".vexylo");
+        if(!original_vault_name) return;
+
+        logConsole(`A trancar cofre Vexylo e a guardar alterações...`);
+        const res = await callBackend('api_unmount_vexylo_vault', context_menu_target_path, original_vault_name, pwd);
+        if(res.success) {
+            logConsole(`[SUCESSO] Vault Trancado em Segurança: ${res.vault_path}`);
+            render_files(original_vault_name.substring(0, original_vault_name.lastIndexOf('/')));
+        } else {
+            logConsole(`[ERRO] Falha ao trancar Vault: ${res.error}`);
+        }
     });
 
     document.getElementById("ctx-ren").addEventListener("click", () => {
@@ -1298,12 +1613,17 @@ async function loadShortcuts() {
     }
 }
 
-function promptCryptoPassword() {
+function promptCryptoPassword(title = "[ SECURITY CLEARANCE REQUIRED ]", instruction = "> ENTER CRYPTO PASSWORD:") {
     return new Promise((resolve) => {
         const modal = document.getElementById('crypto-modal');
         const input = document.getElementById('crypto-input');
         const btnConfirm = document.getElementById('crypto-btn-confirm');
         const btnCancel = document.getElementById('crypto-btn-cancel');
+        const titleEl = document.getElementById('crypto-modal-dynamic-title');
+        const instEl = document.getElementById('crypto-modal-dynamic-inst');
+
+        if(titleEl) titleEl.textContent = title;
+        if(instEl) instEl.textContent = instruction;
 
         modal.style.display = 'flex';
         input.value = '';
@@ -1580,5 +1900,285 @@ function updateImageViewer() {
         img.style.maxWidth = '100%';
         img.style.maxHeight = '100%';
         img.style.flexShrink = '0';
+    }
+}
+
+let vault_current_path = null;
+async function render_vault_files(path) {
+    const body = document.getElementById("vault-files-body");
+    const pathVal = document.getElementById("vault-current-dir");
+
+    if (!body) return;
+    body.innerHTML = `<tr><td colspan="4" class="loading-td">A varrer o diretório: ${path}...</td></tr>`;
+
+    if (!backend) {
+        body.innerHTML = `<tr><td colspan="4" class="loading-td" style="color:var(--neon-magenta)">Erro: Ambiente Eel indisponível.</td></tr>`;
+        return;
+    }
+
+    try {
+        const res = await callBackend('list_directory_contents', path, false);
+        if (res.success) {
+            vault_current_path = res.path;
+            pathVal.value = vault_current_path; // Atualizar o input ao invés de span
+
+            if (res.items.length === 0) {
+                body.innerHTML = `<tr><td colspan="4" class="loading-td">Pasta vazia ou sem acessibilidade.</td></tr>`;
+                return;
+            }
+
+            body.innerHTML = "";
+            current_folder_images = [];
+            
+            res.items.forEach(item => {
+                const extLower = item.extension ? item.extension.toLowerCase() : "";
+                const imageExts = [".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".ico"];
+                if (!item.is_dir && imageExts.includes(extLower)) {
+                    current_folder_images.push(item);
+                }
+                
+                const tr = document.createElement("tr");
+
+                // Icon e tipo
+                const icon = item.is_dir ? "📁" : "📄";
+                const iconClass = item.is_dir ? "icon-pasta" : "icon-ficheiro";
+                const tipoDisplay = item.is_dir ? "Pasta" : `Ficheiro ${item.extension}`;
+
+                let utilsHtml = '';
+                const safePath = item.path.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+                const isZip = item.extension && item.extension.toLowerCase() === '.zip';
+
+                if (item.is_dir) {
+                    utilsHtml = `
+                        <button class="btn-micro cyan" onclick="event.stopPropagation(); scanFolderSize(this, '${safePath}')">[ SCAN ]</button>
+                        <button class="btn-micro green" onclick="event.stopPropagation(); createZipFile('${safePath}')">[ ZIP ]</button>
+                        <button class="btn-micro orange" onclick="event.stopPropagation(); activateInlineRename(this.closest('tr'), this.closest('tr').__itemData)">[ REN ]</button>
+                        <button class="btn-micro magenta" onclick="event.stopPropagation(); deleteItem('${safePath}')">[ DEL ]</button>
+                    `;
+                } else if (item.extension && item.extension.toLowerCase() === '.batlock') {
+                    utilsHtml = `
+                        <button class="btn-micro yellow" onclick="event.stopPropagation(); logConsole('Editar desabilitado para arquivos batlock: ${safePath}')" disabled>[ EDIT ]</button>
+                        <button class="btn-micro cyan" onclick="event.stopPropagation(); decryptItem('${safePath}')">[ DEC ]</button>
+                        <button class="btn-micro orange" onclick="event.stopPropagation(); activateInlineRename(this.closest('tr'), this.closest('tr').__itemData)">[ REN ]</button>
+                        <button class="btn-micro magenta" onclick="event.stopPropagation(); deleteItem('${safePath}')">[ DEL ]</button>
+                    `;
+                } else if (isZip) {
+                    utilsHtml = `
+                        <button class="btn-micro yellow" onclick="event.stopPropagation(); openNanoEditor('${safePath}')">[ EDIT ]</button>
+                        <button class="btn-micro green" onclick="event.stopPropagation(); extractZipFile('${safePath}')">[ UNZ ]</button>
+                        <button class="btn-micro cyan" onclick="event.stopPropagation(); ${isVaultMounted && vault_current_path === 'VAULT://' ? `extractFromVault('${safePath}')` : `encryptItem('${safePath}')`}">${isVaultMounted && vault_current_path === 'VAULT://' ? '[ EXTR ]' : '[ ENC ]'}</button>
+                        <button class="btn-micro orange" onclick="event.stopPropagation(); activateInlineRename(this.closest('tr'), this.closest('tr').__itemData)">[ REN ]</button>
+                        <button class="btn-micro magenta" onclick="event.stopPropagation(); ${isVaultMounted && vault_current_path === 'VAULT://' ? `deleteFromVault('${item.name}')` : `deleteItem('${safePath}')`} ">[ DEL ]</button>
+                    `;
+                } else {
+                    utilsHtml = `
+                        <button class="btn-micro yellow" onclick="event.stopPropagation(); openNanoEditor('${safePath}')">[ EDIT ]</button>
+                        <button class="btn-micro green" onclick="event.stopPropagation(); createZipFile('${safePath}')">[ ZIP ]</button>
+                        <button class="btn-micro cyan" onclick="event.stopPropagation(); ${isVaultMounted && vault_current_path === 'VAULT://' ? `extractFromVault('${safePath}')` : `encryptItem('${safePath}')`}">${isVaultMounted && vault_current_path === 'VAULT://' ? '[ EXTR ]' : '[ ENC ]'}</button>
+                        <button class="btn-micro orange" onclick="event.stopPropagation(); activateInlineRename(this.closest('tr'), this.closest('tr').__itemData)">[ REN ]</button>
+                        <button class="btn-micro magenta" onclick="event.stopPropagation(); ${isVaultMounted && vault_current_path === 'VAULT://' ? `deleteFromVault('${item.name}')` : `deleteItem('${safePath}')`} ">[ DEL ]</button>
+                    `;
+                }
+
+                tr.innerHTML = `
+                    <td class="type-cell ${item.is_dir ? 'neon-yellow' : ''}"><span class="icon ${iconClass}">${icon}</span> <span>${tipoDisplay}</span></td>
+                    <td class="file-name-cell name-cell" style="font-weight: ${item.is_dir ? 'bold' : 'normal'}">${item.name}</td>
+                    <td class="align-right size-cell">${item.size}</td>
+                    <td class="align-right utils-cell">${utilsHtml}</td>
+                `;
+
+                // Anexar dados do item ao TR para acesso no F2 e afins
+                tr.__itemData = item;
+                tr.style.cursor = "pointer";
+                tr.title = item.is_dir ? "Duplo clique para abrir a pasta" : "Duplo clique para abrir ficheiro";
+
+                // Listener de cliques dinâmicos usando e.detail
+                tr.addEventListener("click", (e) => {
+                    // Ignorar cliques nos botões utilitários ou dentro de inputs
+                    if (e.target.closest('.btn-micro') || e.target.closest('input')) return;
+
+                    // [ 1 Clique ]: Seleção Tática
+                    if (selected_row_element && selected_row_element !== tr) {
+                        selected_row_element.classList.remove('selected-row');
+                    }
+                    tr.classList.add('selected-row');
+                    selected_row_element = tr;
+                    selected_item_path = item.path;
+
+                    // Fechar menu de contexto se aberto no click esquerdo
+                    const ctxMenu = document.getElementById("custom-context-menu");
+                    if(ctxMenu) ctxMenu.style.display = "none";
+
+                    if (e.detail === 2) {
+                        // [ 2 Cliques ]: Abrir/Entrar
+                        if (item.is_dir || (item.extension && item.extension.toLowerCase() === '.zip')) {
+                            render_vault_files(item.path);
+                        } else {
+                            const validExts = [".txt", ".log", ".json", ".py", ".md", ".ini", ".js", ".html", ".css", ".csv"];
+                            const imageExts = [".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".ico"];
+                            const extLower = item.extension ? item.extension.toLowerCase() : "";
+                            
+                            if (validExts.includes(extLower) || !extLower) {
+                                openNanoEditor(item.path);
+                            } else if (imageExts.includes(extLower)) {
+                                logConsole(`Abrindo imagem no visualizador interno: ${item.name}`);
+                                const idx = current_folder_images.findIndex(img => img.path === item.path);
+                                if (idx !== -1) {
+                                    current_image_index = idx;
+                                    updateImageViewer();
+                                    const modal = document.getElementById("image-viewer-modal");
+                                    if (modal) modal.style.display = "flex";
+                                }
+                            } else {
+                                logConsole(`Sem suporte nativo para ler ficheiros ${item.extension}.`);
+                            }
+                        }
+                    } else if (e.detail === 3) {
+                        // [ 3 Cliques ]: Inline Rename Instântaneo
+                        activateInlineRename(tr, item);
+                    }
+                });
+
+
+                // Feedback visual hover
+                tr.title = item.is_dir ? "Duplo clique para abrir a pasta" : "Duplo clique para abrir ficheiro (se texto)";
+                tr.addEventListener("mouseenter", () => tr.style.background = "rgba(0, 255, 255, 0.1)");
+                tr.addEventListener("mouseleave", () => tr.style.background = "");
+
+                // Interceptar Context Menu
+                tr.addEventListener('contextmenu', async (e) => {
+                    e.preventDefault();
+                    context_menu_target_path = item.path;
+                    selected_row_element = tr;
+                    selected_item_path = item.path;
+                    
+                    const menu = document.getElementById("custom-context-menu");
+                    if(menu) {
+                        // Check if Vaults exist
+                        const vaults = await callBackend('api_get_vaults');
+                        const hideBtn = document.getElementById("ctx-hide-vexylo");
+                        if (hideBtn) {
+                            if (!vaults || vaults.length === 0) {
+                                hideBtn.style.opacity = "0.3";
+                                hideBtn.style.pointerEvents = "none";
+                            } else {
+                                hideBtn.style.opacity = "1";
+                                hideBtn.style.pointerEvents = "auto";
+                            }
+                        }
+
+                        menu.style.display = "block";
+                        menu.style.left = e.pageX + "px";
+                        menu.style.top = e.pageY + "px";
+                    }
+                });
+
+                body.appendChild(tr);
+            });
+
+            logConsole(`Diretório acedido com sucesso.`);
+        } else {
+            body.innerHTML = `<tr><td colspan="4" class="loading-td" style="color:var(--neon-magenta)">Erro: ${res.error}</td></tr>`;
+            logConsole(`Erro ao listar pasta: ${res.error}`);
+        }
+    } catch (e) {
+        body.innerHTML = `<tr><td colspan="4" class="loading-td" style="color:var(--neon-magenta)">Falha: ${e.message}</td></tr>`;
+        logConsole(`Falha do motor de ficheiros: ${e.message}`);
+    }
+}
+
+
+
+// --- Vault Explorer Additions ---
+function initVaultFileCreation() {
+    const btnCreateFolder = document.getElementById('btn-vault-create-folder');
+    const inputFolder = document.getElementById('input-vault-new-folder');
+    const btnCreateFile = document.getElementById('btn-vault-create-file');
+    const inputFile = document.getElementById('input-vault-new-file');
+    const btnRefresh = document.getElementById('btn-vault-refresh-dir');
+
+    if(!btnCreateFolder) return;
+
+    const handleCreateFolder = async () => {
+        const folderName = inputFolder.value.trim();
+        if (!folderName) return;
+        try {
+            const res = await callBackend('api_criar_pasta', vault_current_path, folderName);
+            if (res.success) {
+                logConsole(`[SUCESSO] Pasta criada no vault: ${folderName}`);
+                inputFolder.value = '';
+                render_vault_files(vault_current_path);
+            } else {
+                logConsole(`[ERRO] Falha ao criar pasta no vault: ${res.error}`);
+            }
+        } catch (e) {
+            logConsole(`[ERRO FATAL] ${e.message}`);
+        }
+    };
+
+    const handleCreateFile = async () => {
+        const fileName = inputFile.value.trim();
+        if (!fileName) return;
+        try {
+            const res = await callBackend('api_criar_ficheiro', vault_current_path, fileName);
+            if (res.success) {
+                logConsole(`[SUCESSO] Ficheiro criado no vault: ${fileName}`);
+                inputFile.value = '';
+                render_vault_files(vault_current_path);
+            } else {
+                logConsole(`[ERRO] Falha ao criar ficheiro no vault: ${res.error}`);
+            }
+        } catch (e) {
+            logConsole(`[ERRO FATAL] ${e.message}`);
+        }
+    };
+
+    btnCreateFolder.addEventListener('click', handleCreateFolder);
+    btnCreateFile.addEventListener('click', handleCreateFile);
+    inputFolder.addEventListener('keypress', (e) => { if (e.key === 'Enter') handleCreateFolder(); });
+    inputFile.addEventListener('keypress', (e) => { if (e.key === 'Enter') handleCreateFile(); });
+
+    btnRefresh.addEventListener('click', () => {
+        if (vault_current_path) render_vault_files(vault_current_path);
+    });
+}
+
+function initVaultSearchAndView() {
+    const searchInput = document.getElementById('vault-search-input-box');
+    const tableContainer = document.querySelector('#vault-explorer-container .files-table-container');
+    const btnList = document.getElementById('btn-vault-view-list');
+    const btnGrid = document.getElementById('btn-vault-view-grid');
+
+    if(!searchInput) return;
+
+    function applySearchFilter() {
+        const term = searchInput.value.toLowerCase();
+        const rows = document.querySelectorAll('#vault-files-body tr.file-row, #vault-files-body .grid-card');
+        
+        rows.forEach(row => {
+            const nameEl = row.querySelector('.file-name');
+            if (nameEl) {
+                const name = nameEl.textContent.toLowerCase();
+                row.style.display = name.includes(term) ? '' : 'none';
+            }
+        });
+    }
+
+    searchInput.addEventListener('input', applySearchFilter);
+
+    if (btnList && btnGrid && tableContainer) {
+        btnList.addEventListener('click', () => {
+            btnGrid.classList.remove('active');
+            btnList.classList.add('active');
+            tableContainer.classList.remove('grid-mode');
+            applySearchFilter();
+        });
+
+        btnGrid.addEventListener('click', () => {
+            btnList.classList.remove('active');
+            btnGrid.classList.add('active');
+            tableContainer.classList.add('grid-mode');
+            applySearchFilter();
+        });
     }
 }

@@ -15,7 +15,7 @@ from templates import LOGIN_HTML, DASHBOARD_HTML
 
 
 # Disable default docs because we want to protect them
-app = FastAPI(title="Batcomputer API", docs_url=None, redoc_url=None, openapi_url=None)
+app = FastAPI(title="Vexylo API", docs_url=None, redoc_url=None, openapi_url=None)
 
 # Mount static files for swagger CSS
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -70,8 +70,8 @@ def login(response: Response, username: str = Form(...), password: str = Form(..
         value=access_token, 
         httponly=True, 
         max_age=3600, # 1 hour
-        samesite="none",
-        secure=True
+        samesite="lax",
+        secure=False
     )
     return response
 
@@ -85,13 +85,13 @@ def logout(response: Response):
 
 @app.get("/api/openapi.json", include_in_schema=False)
 async def get_open_api_endpoint(username: str = Depends(get_current_user)):
-    return JSONResponse(get_openapi(title="Batcomputer API", version="1.0.0", routes=app.routes))
+    return JSONResponse(get_openapi(title="Vexylo API", version="1.0.0", routes=app.routes))
 
 @app.get("/api/docs", include_in_schema=False)
 async def get_documentation(username: str = Depends(get_current_user)):
     return get_swagger_ui_html(
         openapi_url="/api/openapi.json", 
-        title="Batcomputer API - Protected Docs",
+        title="Vexylo API - Protected Docs",
         swagger_css_url="/static/swagger-ui.min.css"
     )
 

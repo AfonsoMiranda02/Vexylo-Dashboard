@@ -33,7 +33,7 @@ clean_func = """def update_telemetry(self):
     except Exception as e:
         print(f"[!] Erro na telemetria: {e}")"""
 
-# find the update_telemetry inside BatcomputerWindow
+# find the update_telemetry inside VexyloWindow
 text = re.sub(r'def update_telemetry\(self\):.*?except Exception as e:\n\s*print\(f"\[!\] Erro no QTimer de telemetria: \{e\}"\)', clean_func, text, flags=re.DOTALL)
 
 # remove the dangling update_telemetry definition that was placed outside by mistake

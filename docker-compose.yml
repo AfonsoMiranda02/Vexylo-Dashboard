@@ -3,7 +3,7 @@ version: '3.8'
 services:
   db:
     image: postgres:15
-    container_name: batcomputer_db
+    container_name: vexylo_db
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: supersecretpassword
@@ -11,28 +11,28 @@ services:
     ports:
       - "2050:5432"
     labels:
-      - "batcomputer.project=true"
+      - "vexylo.project=true"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     restart: unless-stopped
 
   pgadmin:
     image: dpage/pgadmin4
-    container_name: batcomputer_pgadmin
+    container_name: vexylo_pgadmin
     environment:
-      PGADMIN_DEFAULT_EMAIL: admin@batcomputer.local
+      PGADMIN_DEFAULT_EMAIL: admin@vexylo.local
       PGADMIN_DEFAULT_PASSWORD: admin
     ports:
       - "2070:80"
     labels:
-      - "batcomputer.project=true"
+      - "vexylo.project=true"
     depends_on:
       - db
     restart: unless-stopped
 
   api:
     build: ./backend-api
-    container_name: batcomputer_api
+    container_name: vexylo_api
     ports:
       - "2060:2060"
     environment:
@@ -40,7 +40,7 @@ services:
     volumes:
       - ./backend-api:/app
     labels:
-      - "batcomputer.project=true"
+      - "vexylo.project=true"
     depends_on:
       - db
     restart: unless-stopped
@@ -50,26 +50,26 @@ services:
 
   docker-proxy:
     image: tecnativa/docker-socket-proxy
-    container_name: batcomputer_docker_proxy
+    container_name: vexylo_docker_proxy
     environment:
       - CONTAINERS=1
       - POST=1
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     labels:
-      - "batcomputer.project=true"
+      - "vexylo.project=true"
     restart: unless-stopped
 
   portainer:
     image: portainer/portainer-ce
-    container_name: batcomputer_portainer
+    container_name: vexylo_portainer
     command: -H tcp://docker-proxy:2375
     ports:
       - "2080:9000"
     depends_on:
       - docker-proxy
     labels:
-      - "batcomputer.project=true"
+      - "vexylo.project=true"
     restart: unless-stopped
 
 volumes:

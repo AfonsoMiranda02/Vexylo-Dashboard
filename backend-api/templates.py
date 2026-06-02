@@ -6,7 +6,7 @@ LOGIN_HTML = """
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SECURE ACCESS | BatComputer</title>
+    <title>SECURE ACCESS | Vexylo Dashboard</title>
     <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet">
     <style>
         :root {
@@ -104,7 +104,7 @@ LOGIN_HTML = """
     <div class="coords">LAT 40.7128 N<br>LON 74.0060 W</div>
     
     <div class="login-vault">
-        <h2>BATCOMPUTER</h2>
+        <h2>VEXYLO DASHBOARD</h2>
         <form id="loginForm">
             <div class="input-group">
                 <label for="username">Username</label>
@@ -156,7 +156,7 @@ DASHBOARD_HTML = """
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BATCOMPUTER TACTICAL UI</title>
+    <title>VEXYLO TACTICAL UI</title>
     <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet">
     <style>
         :root {

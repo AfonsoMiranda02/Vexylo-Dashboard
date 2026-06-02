@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NEXORA // COGNITIVE HUD</title>
+    <title>VEXYLO DASHBOARD // COGNITIVE HUD</title>
     <!-- Favicon Override -->
     <link rel="icon" type="image/png" href="icon.png">
     <!-- Google Fonts for Cyberpunk HUD feeling -->
@@ -21,18 +21,51 @@
 </head>
 
 <body>
-    <!-- SECURITY GATEWAY: API KEY MODAL -->
-    <div id="sys-api-key-modal" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: #000; z-index: 99999; display: flex; align-items: center; justify-content: center; flex-direction: column;">
+    <!-- SECURITY GATEWAY: OOBE & LOGIN -->
+    <div id="sys-auth-gateway" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: #000; z-index: 99999; display: flex; align-items: center; justify-content: center; flex-direction: column;">
         <div style="text-align: center; margin-bottom: 20px;">
             <div class="scanner-line" style="width: 100%; margin-bottom: 10px;"></div>
-            <h1 style="color: var(--neon-cyan); font-family: var(--font-orbitron); font-size: 3rem; text-shadow: 0 0 10px var(--neon-cyan);">NEXORA <span class="neon-magenta">//</span> CORE</h1>
-            <p style="color: var(--neon-magenta); font-family: var(--font-mono); letter-spacing: 2px;">RESTRICTED ACCESS: BATCOMPUTER MAIN MENU</p>
+            <h1 style="color: var(--neon-cyan); font-family: var(--font-orbitron); font-size: 3rem; text-shadow: 0 0 10px var(--neon-cyan);">VEXYLO SOFTWARE <span class="neon-magenta">//</span> CORE</h1>
+            <p style="color: var(--neon-magenta); font-family: var(--font-mono); letter-spacing: 2px;">RESTRICTED ACCESS: VEXYLO DASHBOARD MAIN MENU</p>
         </div>
-        <div style="width: 400px; border: 1px solid var(--neon-cyan); padding: 30px; background: rgba(0, 240, 255, 0.05); box-shadow: 0 0 15px rgba(0, 240, 255, 0.2);">
-            <label style="display: block; color: var(--neon-cyan); font-family: var(--font-mono); margin-bottom: 10px;">ENTER SYSTEM API KEY:</label>
-            <input type="password" id="sys-api-key-input" class="crypto-modal-input" placeholder="••••••••••••••" style="width: 100%; font-size: 1.2rem; padding: 10px; margin-bottom: 20px; text-align: center; letter-spacing: 5px;">
-            <button id="btn-unlock-system" class="btn-primary" style="width: 100%; padding: 15px; font-size: 1.2rem;">[ AUTHENTICATE ]</button>
-            <p id="sys-api-error" style="color: var(--neon-magenta); text-align: center; margin-top: 15px; font-family: var(--font-mono); display: none;">ACCESS DENIED. INVALID CREDENTIALS.</p>
+        
+        <!-- PANEL: CREATE ACCOUNT (OOBE STEP 1) -->
+        <div id="auth-panel-register" style="display: none; width: 400px; border: 1px solid var(--neon-cyan); padding: 30px; background: rgba(0, 240, 255, 0.05); box-shadow: 0 0 15px rgba(0, 240, 255, 0.2);">
+            <h3 style="color: var(--neon-yellow); text-align: center; margin-bottom: 20px; font-family: var(--font-orbitron);">[ SYSTEM INITIALIZATION ]</h3>
+            <label style="display: block; color: var(--neon-cyan); font-family: var(--font-mono); margin-bottom: 5px;">DEFINE MASTER USERNAME:</label>
+            <input type="text" id="reg-username" class="crypto-modal-input" placeholder="USERNAME" style="width: 100%; font-size: 1.2rem; padding: 10px; margin-bottom: 15px; text-align: center; letter-spacing: 2px;">
+            
+            <label style="display: block; color: var(--neon-cyan); font-family: var(--font-mono); margin-bottom: 5px;">DEFINE MASTER PASSWORD:</label>
+            <input type="password" id="reg-password" class="crypto-modal-input" placeholder="••••••••••••••" style="width: 100%; font-size: 1.2rem; padding: 10px; margin-bottom: 20px; text-align: center; letter-spacing: 5px;">
+            
+            <button id="btn-register-account" class="btn-primary" style="width: 100%; padding: 15px; font-size: 1.2rem;">[ CREATE ACCOUNT ]</button>
+            <p id="reg-error" style="color: var(--neon-magenta); text-align: center; margin-top: 15px; font-family: var(--font-mono); display: none;">ERROR CREATING ACCOUNT.</p>
+        </div>
+
+        <!-- PANEL: API KEY (OOBE STEP 2) -->
+        <div id="auth-panel-apikey" style="display: none; width: 400px; border: 1px solid var(--neon-cyan); padding: 30px; background: rgba(0, 240, 255, 0.05); box-shadow: 0 0 15px rgba(0, 240, 255, 0.2);">
+            <h3 style="color: var(--neon-cyan); text-align: center; margin-bottom: 20px; font-family: var(--font-orbitron);">[ UPLINK CONFIGURATION ]</h3>
+            <label style="display: block; color: var(--text-bright); font-family: var(--font-mono); margin-bottom: 10px; font-size: 0.8rem; text-align: center;">Enter your existing API Key to connect telemetry.</label>
+            <input type="password" id="setup-apikey" class="crypto-modal-input" placeholder="API KEY" style="width: 100%; font-size: 1.1rem; padding: 10px; margin-bottom: 20px; text-align: center; letter-spacing: 2px;">
+            
+            <div style="display: flex; gap: 10px;">
+                <button id="btn-save-apikey" class="btn-primary" style="flex: 1; padding: 10px;">[ SAVE KEY ]</button>
+                <button id="btn-skip-apikey" class="btn-secondary" style="flex: 1; padding: 10px; color: var(--neon-magenta); border-color: var(--neon-magenta);">[ SKIP ]</button>
+            </div>
+            <p id="apikey-warning" style="color: var(--neon-yellow); text-align: center; margin-top: 15px; font-family: var(--font-mono); font-size: 0.75rem; display: none;">AVISO: A aplicação (Telemetria, Dossiers) não funcionará como desejado sem uma API Key válida.</p>
+        </div>
+
+        <!-- PANEL: LOGIN (NORMAL BOOT) -->
+        <div id="auth-panel-login" style="display: none; width: 400px; border: 1px solid var(--neon-cyan); padding: 30px; background: rgba(0, 240, 255, 0.05); box-shadow: 0 0 15px rgba(0, 240, 255, 0.2);">
+            <h3 style="color: var(--neon-cyan); text-align: center; margin-bottom: 20px; font-family: var(--font-orbitron);">[ SYSTEM AUTHENTICATION ]</h3>
+            <label style="display: block; color: var(--neon-cyan); font-family: var(--font-mono); margin-bottom: 5px;">USERNAME:</label>
+            <input type="text" id="login-username" class="crypto-modal-input" placeholder="USERNAME" style="width: 100%; font-size: 1.2rem; padding: 10px; margin-bottom: 15px; text-align: center; letter-spacing: 2px;">
+            
+            <label style="display: block; color: var(--neon-cyan); font-family: var(--font-mono); margin-bottom: 5px;">PASSWORD:</label>
+            <input type="password" id="login-password" class="crypto-modal-input" placeholder="••••••••••••••" style="width: 100%; font-size: 1.2rem; padding: 10px; margin-bottom: 20px; text-align: center; letter-spacing: 5px;">
+            
+            <button id="btn-login-account" class="btn-primary" style="width: 100%; padding: 15px; font-size: 1.2rem;">[ AUTHENTICATE ]</button>
+            <p id="login-error" style="color: var(--neon-magenta); text-align: center; margin-top: 15px; font-family: var(--font-mono); display: none;">ACCESS DENIED. INVALID CREDENTIALS.</p>
         </div>
     </div>
     
@@ -42,8 +75,8 @@
         <header class="hud-header">
             <div class="header-left">
                 <div class="scanner-line"></div>
-                <h1 class="hud-title">NEXORA <span class="neon-magenta">//</span> COGNITIVE HUD</h1>
-                <p class="hud-subtitle">SISTEMA CENTRAL DE OPERAÇÕES DO BATCOMPUTADOR</p>
+                <h1 class="hud-title">VEXYLO DASHBOARD <span class="neon-magenta">//</span> COGNITIVE HUD</h1>
+                <p class="hud-subtitle">SISTEMA CENTRAL DE OPERAÇÕES DA VEXYLO SOFTWARE</p>
             </div>
             <div class="header-right">
                 <div class="system-time-container">
@@ -223,7 +256,7 @@
                     <!-- API IFRAME CONTAINER -->
                     <div id="api-panel-container" style="display: none; margin-top: 20px;">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-                            <h3 style="color: var(--neon-cyan); font-family: var(--font-header);">[ NEXORA CORE API ]</h3>
+                            <h3 style="color: var(--neon-cyan); font-family: var(--font-header);">[ VEXYLO DASHBOARD CORE API ]</h3>
                             <button class="btn-secondary" id="btn-close-api-panel">[ FECHAR PAINEL ]</button>
                         </div>
                         <iframe id="api-iframe" src="" style="width: 100%; height: 75vh; border: 2px solid #00f0ff; background: transparent; box-shadow: 0 0 15px rgba(0, 240, 255, 0.2);"></iframe>
@@ -379,13 +412,80 @@
                     </div>
                 </div>
 
+                <!-- TAB 4: VAULT MANAGER -->
+                <div id="tab-vaults" class="tab-pane" style="height: 100%; flex-direction: column;">
+                    <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(0, 240, 255, 0.3); padding-bottom: 15px; margin-bottom: 20px;">
+                        <div>
+                            <h2 style="color: var(--neon-cyan); font-family: var(--font-orbitron); margin: 0; text-shadow: 0 0 5px var(--neon-cyan);">[ VEXYLO VAULT MANAGER ]</h2>
+                        </div>
+                        <div>
+                            <button id="btn-create-vault" class="btn-primary" style="padding: 8px 15px; margin-right: 10px;">[ + NEW VAULT ]</button>
+                            <button id="btn-close-vault-manager" class="btn-micro magenta" style="padding: 8px 15px;">[ CLOSE ]</button>
+                        </div>
+                    </div>
+                    
+                    <div id="vaults-list-container" style="flex: 1; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 20px; align-content: start;">
+                        <!-- Vault Cards Go Here -->
+                    </div>
+
+                    <div id="vault-explorer-container" style="display: none; flex: 1; flex-direction: column;">
+                        <div style="padding: 10px; display: flex; gap: 10px; border-bottom: 1px solid var(--neon-cyan);">
+                            <span style="color: var(--neon-cyan); font-family: var(--font-orbitron); align-self: center;">VAULT DIR:</span>
+                            <input type="text" id="vault-current-dir" style="flex:1; background: transparent; border: none; color: var(--neon-cyan); font-family: 'Share Tech Mono', monospace; font-size: 14px; outline: none; margin-left: 10px;" value="Carregando..." readonly>
+                            <button id="btn-vault-up-dir" class="btn-micro magenta">[ BACK // UP ONE LEVEL ]</button>
+                            <button id="btn-vault-unmount" class="btn-micro cyan">[ UNMOUNT & LOCK ]</button>
+                        </div>
+                        
+                        <div class="file-creation-bar" style="display: flex; gap: 15px; padding: 10px; border-bottom: 1px dashed var(--border-gray); background-color: rgba(0, 0, 0, 0.5); align-items: center;">
+                            <!-- Creation Controls -->
+                            <div class="creation-group" style="display: flex; gap: 10px;">
+                                <div style="display: flex; gap: 5px;">
+                                    <input type="text" id="input-vault-new-folder" placeholder="Nome da pasta..." class="compact-input" style="border-color: var(--neon-magenta);">
+                                    <button id="btn-vault-create-folder" class="btn-micro magenta">[ + PASTA ]</button>
+                                </div>
+                                <div style="display: flex; gap: 5px;">
+                                    <input type="text" id="input-vault-new-file" placeholder="nome.txt..." class="compact-input" style="border-color: var(--neon-green);">
+                                    <button id="btn-vault-create-file" class="btn-micro green">[ + FICHEIRO ]</button>
+                                </div>
+                            </div>
+                            
+                            <!-- Search Bar Placeholder -->
+                            <div class="search-group" style="display: flex; flex: 1;">
+                                <input type="text" id="vault-search-input-box" placeholder="[ SEARCH VAULT... ]" class="search-input">
+                            </div>
+
+                            <!-- View & Action Controls -->
+                            <div class="view-group" style="display: flex; gap: 8px;">
+                                <button id="btn-vault-view-list" class="view-btn active">[ LIST ]</button>
+                                <button id="btn-vault-view-grid" class="view-btn">[ GRID ]</button>
+                                <button id="btn-vault-refresh-dir" class="btn-micro cyan">[ REFRESH ]</button>
+                            </div>
+                        </div>
+
+                        <div class="files-table-container" style="flex: 1; overflow-y: auto;">
+                            <table class="hud-table">
+                                <thead>
+                                    <tr>
+                                        <th>TIPO</th>
+                                        <th>NOME DO FICHEIRO</th>
+                                        <th class="align-right">TAMANHO</th>
+                                        <th class="align-right">UTILS</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="vault-files-body">
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
             </section>
         </main>
 
         <!-- FOOTER STATUS BAR -->
         <footer class="hud-footer">
             <div class="footer-left">SYS_STATUS: ON_LINE</div>
-            <div class="footer-center">BATCOMPUTER CORE OPERATIONAL - PROTOCOLO NEXORA V1</div>
+            <div class="footer-center">VEXYLO DASHBOARD CORE OPERATIONAL - PROTOCOLO VEXYLO V1</div>
             <div class="footer-right">LEVEL_01_SECURE</div>
         </footer>
     </div>
@@ -393,8 +493,8 @@
     <!-- CUSTOM CRYPTO PASSWORD MODAL -->
     <div id="crypto-modal" style="display: none;">
         <div class="crypto-modal-panel">
-            <h3 class="crypto-modal-title">[ SECURITY CLEARANCE REQUIRED ]</h3>
-            <p class="crypto-modal-instruction">> ENTER CRYPTO PASSWORD:</p>
+            <h3 class="crypto-modal-title" id="crypto-modal-dynamic-title">[ SECURITY CLEARANCE REQUIRED ]</h3>
+            <p class="crypto-modal-instruction" id="crypto-modal-dynamic-inst">> ENTER CRYPTO PASSWORD:</p>
             <input type="password" id="crypto-input" class="crypto-modal-input" autocomplete="off" />
             <div class="crypto-modal-actions">
                 <button id="crypto-btn-confirm" class="btn-micro cyan">[ CONFIRM ]</button>
@@ -465,14 +565,91 @@
             </div>
         </div>
     </div>
+
+    <!-- OLD VAULT MANAGER REMOVED -->
+
+    <!-- CREATE VAULT MODAL -->
+    <div id="create-vault-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.9); z-index: 95000; align-items: center; justify-content: center;">
+        <div class="crypto-modal-panel" style="width: 500px;">
+            <h3 class="crypto-modal-title">[ INITIALIZE NEW VAULT ]</h3>
+            
+            <label style="display: block; color: var(--neon-cyan); font-family: var(--font-mono); margin: 15px 0 5px;">VAULT NAME:</label>
+            <input type="text" id="new-vault-name" class="crypto-modal-input" placeholder="MySecretVault" style="width: 100%;" />
+            
+            <label style="display: block; color: var(--neon-cyan); font-family: var(--font-mono); margin: 15px 0 5px;">MASTER PASSWORD:</label>
+            <input type="password" id="new-vault-pass" class="crypto-modal-input" placeholder="••••••••" style="width: 100%;" />
+            
+            <div style="margin-top: 20px;">
+                <label style="display: flex; align-items: center; color: var(--text-bright); font-size: 0.9rem; cursor: pointer;">
+                    <input type="checkbox" id="new-vault-gen-key" style="margin-right: 10px; accent-color: var(--neon-cyan);"> 
+                    Generate additional .key file for 2FA protection
+                </label>
+            </div>
+            
+            <label style="display: block; color: var(--neon-magenta); font-family: var(--font-mono); margin: 20px 0 5px;">PASTA/FICHEIRO INICIAL (OPCIONAL):</label>
+            <input type="text" id="new-vault-initial-folder" class="crypto-modal-input" placeholder="C:/Exemplo/Pasta" style="width: 100%; border-color: var(--neon-magenta); color: var(--neon-magenta);" />
+            <p style="color: rgba(255,255,255,0.4); font-size: 0.75rem; margin-top: 5px;">Se preenchido, esta pasta será movida automaticamente para o novo cofre usando o Smart Progress Engine.</p>
+            
+            <div id="create-vault-progress-container" style="display: none; margin-top: 20px;">
+                <div style="color: var(--neon-yellow); font-family: var(--font-mono); font-size: 0.8rem; margin-bottom: 5px;" id="create-vault-progress-text">ENCRYPTING... 0%</div>
+                <div style="width: 100%; height: 5px; background: rgba(255,255,255,0.1);">
+                    <div id="create-vault-progress-bar" style="height: 100%; width: 0%; background: var(--neon-yellow); transition: width 0.3s;"></div>
+                </div>
+            </div>
+
+            <div class="crypto-modal-actions" style="margin-top: 30px;">
+                <button id="btn-confirm-create-vault" class="btn-micro cyan">[ CREATE ]</button>
+                <button id="btn-cancel-create-vault" class="btn-micro magenta">[ CANCEL ]</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- VAULT SMART PROGRESS MODAL -->
+    <div id="vault-smart-progress-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.95); z-index: 100000; align-items: center; justify-content: center; flex-direction: column;">
+        <div style="width: 600px; border: 1px solid var(--neon-cyan); background: rgba(0, 240, 255, 0.05); padding: 30px; box-shadow: 0 0 20px rgba(0, 240, 255, 0.2);">
+            <h3 style="color: var(--neon-cyan); font-family: var(--font-orbitron); text-align: center; margin-bottom: 25px; font-size: 1.5rem;" id="smart-progress-title">[ VAULT ENCRYPTION ENGINE ]</h3>
+            
+            <div style="display: flex; justify-content: space-between; color: var(--neon-magenta); font-family: var(--font-mono); font-size: 0.85rem; margin-bottom: 10px;">
+                <span id="smart-progress-phase">PHASE 1: DESENCRIPTAÇÃO</span>
+                <span id="smart-progress-pct">0.00%</span>
+            </div>
+            
+            <div style="width: 100%; height: 10px; background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(0, 240, 255, 0.3); position: relative; margin-bottom: 15px;">
+                <div id="smart-progress-bar-fill" style="position: absolute; top: 0; left: 0; height: 100%; width: 0%; background: var(--neon-cyan); box-shadow: 0 0 10px var(--neon-cyan); transition: width 0.1s linear;"></div>
+            </div>
+            
+            <div id="smart-progress-file" style="color: rgba(255,255,255,0.5); font-family: var(--font-mono); font-size: 0.75rem; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                > Aguardando inicio...
+            </div>
+        </div>
+    </div>
+
+    <!-- SELECT VAULT TARGET MODAL -->
+    <div id="select-vault-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.9); z-index: 96000; align-items: center; justify-content: center;">
+        <div class="crypto-modal-panel" style="width: 500px;">
+            <h3 class="crypto-modal-title">[ SELECT TARGET VAULT ]</h3>
+            <p style="color: var(--text-bright); text-align: center; margin-bottom: 20px; font-size: 0.9rem;">Escolhe o cofre de destino para enviar os ficheiros seguros.</p>
+            
+            <div id="select-vault-list" style="max-height: 250px; overflow-y: auto; border: 1px solid rgba(0, 240, 255, 0.3); background: rgba(0,0,0,0.5); margin-bottom: 20px;">
+                <!-- Filled dynamically via JS -->
+            </div>
+            
+            <div class="crypto-modal-actions">
+                <button id="btn-cancel-select-vault" class="btn-micro magenta" style="width: 100%;">[ CANCEL TRANSFER ]</button>
+            </div>
+        </div>
+    </div>
     <!-- CUSTOM CONTEXT MENU -->
     <div id="custom-context-menu" style="position: absolute; display: none; z-index: 9999; background: #030712; border: 1px solid var(--neon-cyan); min-width: 220px; box-shadow: 0 0 15px rgba(0, 240, 255, 0.2); border-radius: 4px; padding: 5px 0;">
         <button class="ctx-btn" id="ctx-pin">📌 [ PIN TO SIDEBAR ]</button>
         <button class="ctx-btn" id="ctx-fav">⭐ [ ADD TO FAVORITES ]</button>
-        <button class="ctx-btn" id="ctx-vault">🛡️ [ MOVE TO VAULT ]</button>
+        <button class="ctx-btn" id="ctx-vault">🗄️ [ MOVE TO OLD VAULT ]</button>
+        <button class="ctx-btn" id="ctx-hide-vexylo">🛡️ [ HIDE (VEXYLO VAULT) ]</button>
+        <button class="ctx-btn" id="ctx-mount-vexylo">🔓 [ UNLOCK/MOUNT VAULT ]</button>
+        <button class="ctx-btn" id="ctx-unmount-vexylo">🔒 [ LOCK/UNMOUNT VAULT ]</button>
         <div style="height: 1px; background: rgba(0, 240, 255, 0.2); margin: 5px 0;"></div>
-        <button class="ctx-btn" id="ctx-ren">📝 [ QUICK RENAME ]</button>
-        <button class="ctx-btn danger" id="ctx-del">❌ [ DESTROY ITEM ]</button>
+        <button class="ctx-btn" id="ctx-ren">✏️ [ QUICK RENAME ]</button>
+        <button class="ctx-btn danger" id="ctx-del" style="color: var(--neon-magenta);">🗑️ [ DELETE ITEM ]</button>
     </div>
 
     <!-- VAULT AUTH MODAL -->
