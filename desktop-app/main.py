@@ -120,7 +120,7 @@ def authenticate_api():
     """Verifica se o backend API está online e acessível."""
     try:
         # Apenas um ping para garantir que o Docker/API está online antes de continuar
-        res = requests.get(f"{API_BASE_URL}/docs", timeout=5)
+        res = requests.get(f"{API_BASE_URL}/api/has-account", timeout=5)
         if res.status_code == 200:
             print("[*] Conexão com o Backend da API (Docker) estabelecida.")
             return True

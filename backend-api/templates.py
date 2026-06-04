@@ -280,6 +280,45 @@ DASHBOARD_HTML = """
         .input-box:focus { border-color: var(--cyan); box-shadow: inset 0 0 10px var(--cyan-dim); }
         .input-label { display: block; font-size: 12px; color: var(--text-sec); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px; }
         
+        /* Custom Autocomplete Dropdown */
+        .autocomplete-wrapper { position: relative; width: 100%; }
+        .autocomplete-items {
+            position: absolute; border: 1px solid var(--cyan); border-top: none;
+            z-index: 99; top: 100%; left: 0; right: 0;
+            background: rgba(2, 6, 23, 0.95); backdrop-filter: blur(5px);
+            max-height: 250px; overflow-y: auto; display: none;
+            box-shadow: 0 5px 15px rgba(0, 240, 255, 0.2);
+        }
+        .autocomplete-items div {
+            padding: 10px; cursor: pointer; color: var(--text-main); font-size: 13px;
+            border-bottom: 1px solid rgba(0, 240, 255, 0.1); transition: 0.2s;
+        }
+        .autocomplete-items div:hover {
+            background: var(--cyan-dim); color: var(--cyan);
+        }
+        .autocomplete-items div.autocomplete-active {
+            background: var(--cyan-dim); color: var(--cyan); border-left: 2px solid var(--cyan);
+        }
+        .autocomplete-items::-webkit-scrollbar { width: 4px; }
+        .autocomplete-items::-webkit-scrollbar-thumb { background: var(--cyan); }
+        
+        /* Tooltips */
+        .tooltip { position: relative; display: inline-block; cursor: help; margin-left: 5px; color: var(--cyan-dim); font-weight: bold; }
+        .tooltip:hover { color: var(--cyan); }
+        .tooltip .tooltiptext {
+            visibility: hidden; width: 220px; background-color: rgba(2, 6, 23, 0.95);
+            color: var(--text-main); text-align: left; border: 1px solid var(--cyan);
+            padding: 8px; position: absolute; z-index: 100; bottom: 125%; left: 50%;
+            margin-left: -110px; opacity: 0; transition: opacity 0.3s;
+            box-shadow: 0 5px 15px rgba(0, 240, 255, 0.2); font-size: 11px;
+            text-transform: none; font-weight: normal; font-family: 'Share Tech Mono', monospace;
+        }
+        .tooltip .tooltiptext::after {
+            content: ""; position: absolute; top: 100%; left: 50%; margin-left: -5px;
+            border-width: 5px; border-style: solid; border-color: var(--cyan) transparent transparent transparent;
+        }
+        .tooltip:hover .tooltiptext { visibility: visible; opacity: 1; }
+        
         .data-card { border: 1px solid var(--cyan-dim); padding: 15px; background: rgba(0,0,0,0.4); margin-bottom: 15px; border-left: 3px solid var(--cyan); }
         .data-card pre { margin:0; color: var(--text-main); font-size: 13px; white-space: pre-wrap; font-family: 'Share Tech Mono', monospace; }
         
@@ -359,40 +398,55 @@ DASHBOARD_HTML = """
                     <span style="color:var(--text-sec)">Scanning OS Signature...</span>
                 </div>
                 
-                <h2>MODULE: DOSSIERS</h2>
+                <h2>MODULE: API TESTING SUITE</h2>
                 <div style="margin-bottom: 30px;">
-                    <form id="dossierForm" onsubmit="createDossier(event)" style="display:flex; flex-wrap:wrap; gap: 10px; margin-bottom: 15px; background: rgba(0,0,0,0.3); padding: 15px; border-left: 3px solid var(--cyan);">
-                        <input type="text" id="d_name" class="input-box" placeholder="Name" required style="width: 150px; margin:0;">
-                        <input type="text" id="d_class" class="input-box" placeholder="Classification" required style="width: 150px; margin:0;">
-                        <input type="text" id="d_threat" class="input-box" placeholder="Threat Level" required style="width: 150px; margin:0;">
-                        <input type="text" id="d_role" class="input-box" placeholder="Role" required style="width: 150px; margin:0;">
-                        <input type="text" id="d_str" class="input-box" placeholder="Strengths" required style="width: 150px; margin:0;">
-                        <input type="text" id="d_weak" class="input-box" placeholder="Weaknesses" required style="width: 150px; margin:0;">
-                        <input type="text" id="d_notes" class="input-box" placeholder="Notes" style="width: 150px; margin:0;">
-                        <button type="submit" class="btn">CREATE DOSSIER</button>
+                    <form id="apiTestForm" onsubmit="executeApiCall(event)" style="display:flex; flex-direction:column; gap: 15px; background: rgba(0,0,0,0.3); padding: 20px; border-left: 3px solid var(--cyan);">
+                        
+                        <div style="display: flex; gap: 15px; flex-wrap: wrap;">
+                            <div style="flex: 1; min-width: 150px;">
+                                <label class="input-label">HTTP METHOD <span class="tooltip">[?]<span class="tooltiptext">Define a operação:<br>GET (Ler)<br>POST (Criar)<br>PUT (Atualizar)<br>DELETE (Remover)</span></span></label>
+                                <select id="api_method" class="input-box" style="margin:0; width: 100%; cursor: pointer; appearance: auto; color: var(--cyan); background: rgba(0,0,0,0.8);">
+                                    <option value="GET">GET</option>
+                                    <option value="POST">POST</option>
+                                    <option value="PUT">PUT</option>
+                                    <option value="DELETE">DELETE</option>
+                                </select>
+                            </div>
+                            
+                            <div style="flex: 2; min-width: 250px;">
+                                <label class="input-label">TARGET ENDPOINT <span class="tooltip">[?]<span class="tooltiptext">O URL da API destino. Ex: /api/vaults para listar registos do cofre.</span></span></label>
+                                <div class="autocomplete-wrapper">
+                                    <input type="text" id="api_endpoint" class="input-box" placeholder="e.g. /api/vaults" style="margin:0; width: 100%; color: var(--cyan); background: rgba(0,0,0,0.8);" autocomplete="off">
+                                    <div id="endpoint-list" class="autocomplete-items"></div>
+                                </div>
+                            </div>
+
+                            <div style="flex: 1; min-width: 150px;">
+                                <label class="input-label">PATH VAR / ID (OPTIONAL) <span class="tooltip">[?]<span class="tooltiptext">Injeta um ID no URL para atingir um recurso específico. Ex: Inserir '1' resulta em /api/endpoint/1</span></span></label>
+                                <input type="text" id="api_path_var" class="input-box" placeholder="e.g. /1" style="margin:0; width: 100%;">
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="input-label">JSON PAYLOAD (BODY) <span class="tooltip">[?]<span class="tooltiptext">O corpo de dados enviado em pedidos POST e PUT. Tem de ser obrigatoriamente um formato JSON válido.</span></span></label>
+                            <textarea id="api_payload" class="input-box" rows="5" placeholder='{
+  "key": "value"
+}' style="margin:0; width: 100%; resize: vertical; font-family: 'Share Tech Mono', monospace;"></textarea>
+                        </div>
+                        
+                        <div style="display: flex; justify-content: flex-end;">
+                            <button type="submit" class="btn">EXECUTE UPLINK REQUEST</button>
+                        </div>
                     </form>
-                    <button class="btn" onclick="fetchData('dossiers')">SCAN DOSSIERS</button>
                 </div>
-                
-                <h2>MODULE: SCRATCHPAD</h2>
-                <div style="margin-bottom: 30px;">
-                    <form id="noteForm" onsubmit="createNote(event)" style="display:flex; gap: 10px; margin-bottom: 15px; background: rgba(0,0,0,0.3); padding: 15px; border-left: 3px solid var(--cyan);">
-                        <input type="text" id="n_title" class="input-box" placeholder="Title" required style="width: 200px; margin:0;">
-                        <input type="text" id="n_content" class="input-box" placeholder="Content" required style="flex-grow: 1; max-width: none; margin:0;">
-                        <button type="submit" class="btn">LOG NOTE</button>
-                    </form>
-                    <button class="btn" onclick="fetchData('notes')">SCAN NOTES</button>
-                </div>
-                
-                <h2>MODULE: UTILITY BELT</h2>
-                <div style="margin-bottom: 30px;">
-                    <form id="shortcutForm" onsubmit="createShortcut(event)" style="display:flex; gap: 10px; margin-bottom: 15px; background: rgba(0,0,0,0.3); padding: 15px; border-left: 3px solid var(--cyan);">
-                        <input type="text" id="s_name" class="input-box" placeholder="Name" required style="width: 150px; margin:0;">
-                        <input type="text" id="s_cmd" class="input-box" placeholder="Command" required style="flex-grow: 1; max-width: none; margin:0;">
-                        <input type="text" id="s_desc" class="input-box" placeholder="Description" style="width: 200px; margin:0;">
-                        <button type="submit" class="btn">ADD SHORTCUT</button>
-                    </form>
-                    <button class="btn" onclick="fetchData('shortcuts')">SCAN SHORTCUTS</button>
+
+                <h2>UPLINK RESPONSE</h2>
+                <div class="data-card" style="margin-bottom: 30px; display: flex; flex-direction: column; gap: 10px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--cyan-dim); padding-bottom: 10px;">
+                        <span style="color: var(--text-sec); font-size: 12px; letter-spacing: 1px;">STATUS CODE: <strong id="api_status_code" style="color: var(--cyan);">AWAITING REQUEST</strong></span>
+                        <span style="color: var(--text-sec); font-size: 12px; letter-spacing: 1px;">TIME: <strong id="api_time" style="color: var(--cyan);">-</strong></span>
+                    </div>
+                    <pre id="api_response_body" style="color: var(--cyan); min-height: 100px; overflow-x: auto;">// No data</pre>
                 </div>
             </div>
 
@@ -528,140 +582,84 @@ DASHBOARD_HTML = """
             }
         }
 
-        async function fetchData(endpoint) {
-            showToast('INITIATING SCAN: ' + endpoint.toUpperCase());
-            try {
-                const res = await fetch('/api/' + endpoint);
-                const data = await res.json();
-                
-                const sidePanel = document.getElementById('tactical-side-panel');
-                const title = document.getElementById('panel-title');
-                const body = document.getElementById('panel-body-content');
-                
-                title.textContent = "INTEL: " + endpoint.toUpperCase();
-                sidePanel.classList.add('open');
-                
-                if (data.length === 0) {
-                    body.innerHTML = '<p style="color: var(--text-sec);">NO RECORDS FOUND IN DATABANKS.</p>';
+        async function executeApiCall(e) {
+            e.preventDefault();
+            const method = document.getElementById('api_method').value;
+            const endpoint = document.getElementById('api_endpoint').value;
+            let pathVar = document.getElementById('api_path_var').value.trim();
+            const payloadStr = document.getElementById('api_payload').value.trim();
+            
+            const responseBox = document.getElementById('api_response_body');
+            const statusBox = document.getElementById('api_status_code');
+            const timeBox = document.getElementById('api_time');
+            
+            if (pathVar && !pathVar.startsWith('/')) {
+                pathVar = '/' + pathVar;
+            }
+            const fullUrl = endpoint + pathVar;
+            
+            let fetchOptions = {
+                method: method,
+                headers: { 'Content-Type': 'application/json' }
+            };
+            
+            if ((method === 'POST' || method === 'PUT') && payloadStr) {
+                try {
+                    JSON.parse(payloadStr); // Validate JSON
+                    fetchOptions.body = payloadStr;
+                } catch (err) {
+                    showToast('ERR: INVALID JSON FORMAT');
+                    statusBox.textContent = 'CLIENT ERROR';
+                    statusBox.style.color = 'var(--orange)';
+                    responseBox.textContent = 'JSON Parse Error:\\n' + err.message;
+                    responseBox.style.color = 'var(--orange)';
                     return;
                 }
-                
-                let html = '';
-                if (endpoint === 'dossiers') {
-                    data.forEach(item => {
-                        html += `
-                        <div class="intel-card" id="dossier-card-${item.id}">
-                            <div class="intel-title">${item.name || 'UNKNOWN TARGET'}</div>
-                            <div class="intel-field"><span>CLASS:</span> <input type="text" class="input-box" id="d_class_${item.id}" value="${item.classification || ''}" style="margin:0; padding:4px; font-size:11px; max-width: 150px;"></div>
-                            <div class="intel-field"><span>ROLE:</span> <input type="text" class="input-box" id="d_role_${item.id}" value="${item.role || ''}" style="margin:0; padding:4px; font-size:11px; max-width: 150px;"></div>
-                            <div class="intel-field"><span>THREAT LEVEL:</span> <input type="text" class="input-box" id="d_threat_${item.id}" value="${item.threat_level || ''}" style="margin:0; padding:4px; font-size:11px; max-width: 150px;"></div>
-                            <div class="intel-field"><span>STRENGTHS:</span> <input type="text" class="input-box" id="d_str_${item.id}" value="${item.strengths || ''}" style="margin:0; padding:4px; font-size:11px; max-width: 150px;"></div>
-                            <div class="intel-field"><span>WEAKNESSES:</span> <input type="text" class="input-box" id="d_weak_${item.id}" value="${item.weaknesses || ''}" style="margin:0; padding:4px; font-size:11px; max-width: 150px;"></div>
-                            <div class="intel-field"><span>NOTES:</span> <input type="text" class="input-box" id="d_notes_${item.id}" value="${item.notes || ''}" style="margin:0; padding:4px; font-size:11px; max-width: 150px;"></div>
-                            <div style="margin-top: 10px; display:flex; gap:10px;">
-                                <button class="btn" onclick="updateDossier(${item.id}, '${item.name}')">UPDATE INTEL</button>
-                                <button class="btn danger" onclick="deleteItem('dossiers', ${item.id})">TERMINATE</button>
-                            </div>
-                        </div>`;
-                    });
-                } else if (endpoint === 'notes') {
-                    data.forEach(item => {
-                        html += `
-                        <div class="log-box" style="display:flex; justify-content:space-between; align-items:flex-start;">
-                            <div>
-                                <div class="log-time">[ ${item.timestamp ? new Date(item.timestamp).toLocaleString() : 'UNKNOWN TIMESTAMP'} ] - ${item.title || ''}</div>
-                                <div class="log-content">${item.content || 'Log entry'}</div>
-                            </div>
-                            <button class="btn danger" style="padding:4px 8px; font-size:10px;" onclick="deleteItem('notes', ${item.id})">DEL</button>
-                        </div>`;
-                    });
-                } else if (endpoint === 'shortcuts') {
-                    data.forEach(item => {
-                        html += `
-                        <div class="log-box" style="display:flex; justify-content:space-between; align-items:flex-start;">
-                            <div>
-                                <div class="log-time">[ SHORTCUT ] ${item.name || 'UNNAMED'} - ${item.description || ''}</div>
-                                <div class="log-content">CMD/URL: ${item.command || 'N/A'}</div>
-                            </div>
-                            <button class="btn danger" style="padding:4px 8px; font-size:10px;" onclick="deleteItem('shortcuts', ${item.id})">DEL</button>
-                        </div>`;
-                    });
-                } else {
-                    data.forEach(item => {
-                        html += '<div class="data-card"><pre>' + JSON.stringify(item, null, 2) + '</pre></div>';
-                    });
-                }
-                body.innerHTML = html;
-            } catch (e) {
-                showToast('ERR: CONNECTION REFUSED');
             }
-        }
-
-        async function createDossier(e) {
-            e.preventDefault();
-            const payload = {
-                name: document.getElementById('d_name').value,
-                classification: document.getElementById('d_class').value,
-                threat_level: document.getElementById('d_threat').value,
-                role: document.getElementById('d_role').value,
-                strengths: document.getElementById('d_str').value,
-                weaknesses: document.getElementById('d_weak').value,
-                notes: document.getElementById('d_notes').value
-            };
-            await postData('dossiers', payload);
-            e.target.reset();
-        }
-
-        async function updateDossier(id, name) {
-            const payload = {
-                name: name,
-                classification: document.getElementById('d_class_'+id).value,
-                threat_level: document.getElementById('d_threat_'+id).value,
-                role: document.getElementById('d_role_'+id).value,
-                strengths: document.getElementById('d_str_'+id).value,
-                weaknesses: document.getElementById('d_weak_'+id).value,
-                notes: document.getElementById('d_notes_'+id).value
-            };
+            
+            showToast('UPLINK REQUEST SENT...');
+            statusBox.textContent = 'FETCHING...';
+            statusBox.style.color = 'var(--cyan)';
+            responseBox.textContent = 'Awaiting server response...';
+            responseBox.style.color = 'var(--text-sec)';
+            timeBox.textContent = '-';
+            
+            const startTime = performance.now();
+            
             try {
-                const res = await fetch('/api/dossiers/' + id, {
-                    method: 'PUT', headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify(payload)
-                });
-                if(res.ok) { showToast('INTEL UPDATED'); fetchData('dossiers'); }
-            } catch(e) { showToast('ERR: UPDATE FAILED'); }
-        }
-
-        async function createNote(e) {
-            e.preventDefault();
-            const payload = { title: document.getElementById('n_title').value, content: document.getElementById('n_content').value };
-            await postData('notes', payload);
-            e.target.reset();
-        }
-
-        async function createShortcut(e) {
-            e.preventDefault();
-            const payload = { name: document.getElementById('s_name').value, command: document.getElementById('s_cmd').value, description: document.getElementById('s_desc').value };
-            await postData('shortcuts', payload);
-            e.target.reset();
-        }
-
-        async function postData(endpoint, payload) {
-            try {
-                const res = await fetch('/api/' + endpoint, {
-                    method: 'POST', headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify(payload)
-                });
-                if(res.ok) { showToast('DATA LOGGED'); fetchData(endpoint); }
-                else showToast('ERR: INSERT FAILED');
-            } catch(e) { showToast('ERR: CONNECTION FAILED'); }
-        }
-
-        async function deleteItem(endpoint, id) {
-            if(!confirm('CONFIRM TERMINATION?')) return;
-            try {
-                const res = await fetch('/api/' + endpoint + '/' + id, { method: 'DELETE' });
-                if(res.ok) { showToast('TERMINATED'); fetchData(endpoint); }
-            } catch(e) { showToast('ERR: DELETE FAILED'); }
+                const res = await fetch(fullUrl, fetchOptions);
+                const endTime = performance.now();
+                const timeTaken = (endTime - startTime).toFixed(2) + ' ms';
+                
+                statusBox.textContent = `${res.status} ${res.statusText}`;
+                timeBox.textContent = timeTaken;
+                
+                if (res.ok) {
+                    statusBox.style.color = 'var(--cyan)';
+                    responseBox.style.color = 'var(--cyan)';
+                    showToast('UPLINK SUCCESS');
+                } else {
+                    statusBox.style.color = 'var(--orange)';
+                    responseBox.style.color = 'var(--orange)';
+                    showToast('UPLINK FAILED');
+                }
+                
+                const contentType = res.headers.get("content-type");
+                if (contentType && contentType.indexOf("application/json") !== -1) {
+                    const data = await res.json();
+                    responseBox.textContent = JSON.stringify(data, null, 4);
+                } else {
+                    const text = await res.text();
+                    responseBox.textContent = text || '// Empty Response';
+                }
+            } catch (err) {
+                statusBox.textContent = 'NETWORK ERROR';
+                statusBox.style.color = 'var(--orange)';
+                timeBox.textContent = '-';
+                responseBox.textContent = 'Failed to fetch:\\n' + err.message;
+                responseBox.style.color = 'var(--orange)';
+                showToast('ERR: CONNECTION FAILED');
+            }
         }
 
         async function updateCredentials(e) {
@@ -778,6 +776,77 @@ DASHBOARD_HTML = """
             document.execCommand("copy");
             showToast('COPIED TO CLIPBOARD');
         }
+
+        // --- CUSTOM AUTOCOMPLETE LOGIC ---
+        const endpointsData = [
+            "/api/vaults", "/api/dossiers", "/api/notes", "/api/shortcuts",
+            "/api/file-metadata", "/api/file-metadata/toggle-pin", "/api/system/os",
+            "/api/system/logs", "/api/keys", "/api/has-account", "/api/register", "/api/login"
+        ];
+        
+        function setupAutocomplete(inp, arr) {
+            let currentFocus;
+            inp.addEventListener("input", function(e) {
+                let a, b, i, val = this.value;
+                closeAllLists();
+                if (!val) val = "";
+                currentFocus = -1;
+                a = document.getElementById("endpoint-list");
+                a.style.display = "block";
+                for (i = 0; i < arr.length; i++) {
+                    if (arr[i].toLowerCase().includes(val.toLowerCase())) {
+                        b = document.createElement("DIV");
+                        b.innerHTML = arr[i].replace(new RegExp(val, "gi"), (match) => `<span style="color:var(--cyan); font-weight:bold;">${match}</span>`);
+                        b.innerHTML += "<input type='hidden' value='" + arr[i] + "'>";
+                        b.addEventListener("click", function(e) {
+                            inp.value = this.getElementsByTagName("input")[0].value;
+                            closeAllLists();
+                        });
+                        a.appendChild(b);
+                    }
+                }
+            });
+            inp.addEventListener("keydown", function(e) {
+                let x = document.getElementById("endpoint-list");
+                if (x) x = x.getElementsByTagName("div");
+                if (e.keyCode == 40) {
+                    currentFocus++; addActive(x);
+                } else if (e.keyCode == 38) {
+                    currentFocus--; addActive(x);
+                } else if (e.keyCode == 13) {
+                    if (currentFocus > -1 && x && x[currentFocus]) {
+                        e.preventDefault();
+                        x[currentFocus].click();
+                    }
+                }
+            });
+            inp.addEventListener("focus", function() {
+                this.dispatchEvent(new Event('input'));
+            });
+            function addActive(x) {
+                if (!x) return false;
+                removeActive(x);
+                if (currentFocus >= x.length) currentFocus = 0;
+                if (currentFocus < 0) currentFocus = (x.length - 1);
+                x[currentFocus].classList.add("autocomplete-active");
+                x[currentFocus].scrollIntoView({block: "nearest"});
+            }
+            function removeActive(x) {
+                for (let i = 0; i < x.length; i++) x[i].classList.remove("autocomplete-active");
+            }
+            function closeAllLists(elmnt) {
+                let x = document.getElementsByClassName("autocomplete-items");
+                for (let i = 0; i < x.length; i++) {
+                    if (elmnt != x[i] && elmnt != inp) {
+                        x[i].innerHTML = "";
+                        x[i].style.display = "none";
+                    }
+                }
+            }
+            document.addEventListener("click", function (e) { closeAllLists(e.target); });
+        }
+        
+        setupAutocomplete(document.getElementById("api_endpoint"), endpointsData);
 
         // Init
         loadOsInfo();
