@@ -134,6 +134,15 @@ async function eel_get_home_directory() {
     if (path) render_files(path);
 }
 
+function refreshCurrentUI() {
+    const isVaultTabActive = document.getElementById("tab-vaults") && document.getElementById("tab-vaults").classList.contains("active");
+    if (isVaultTabActive && vault_current_path) {
+        render_vault_files(vault_current_path);
+    } else if (current_path) {
+        render_files(current_path);
+    }
+}
+
 // Global State for Nexus
 let isVaultMounted = false;
 let context_menu_target_path = null;
@@ -475,11 +484,10 @@ async function nanoActionSave() {
 
 function nanoActionExit() {
     document.getElementById("nano-overlay").style.display = "none";
-    document.getElementById("files-table-container").style.display = "block";
     document.getElementById("nano-textarea").value = "";
     document.getElementById("nano-find-container").style.display = "none";
     nano_current_file = "";
-    render_files(current_path);
+    refreshCurrentUI();
 }
 
 function nanoActionCopy() {
@@ -526,7 +534,6 @@ async function openNanoEditor(filePath) {
     const textArea = document.getElementById("nano-textarea");
     const statusSpan = document.getElementById("nano-status");
 
-    document.getElementById("files-table-container").style.display = "none";
     document.getElementById("nano-overlay").style.display = "flex";
 
     statusSpan.textContent = `Reading ${filePath}...`;
@@ -763,7 +770,7 @@ function initUnzipModal() {
                 const res = await callBackend('api_extrair_zip_avancado', current_unzip_target, destInput, criarSubpasta);
                 if (res.success) {
                     logConsole(`[SUCESSO] ZIP extraído para: ${res.extracted_to}`);
-                    render_files(current_path);
+                    refreshCurrentUI();
                 } else {
                     logConsole(`[ERRO] Falha ao extrair ZIP: ${res.error}`);
                 }
@@ -796,7 +803,7 @@ async function createZipFile(path) {
         const res = await callBackend('api_criar_zip', path);
         if (res.success) {
             logConsole(`[SUCESSO] ZIP criado: ${res.zip_path}`);
-            render_files(current_path);
+            refreshCurrentUI();
         } else {
             logConsole(`[ERRO] Falha ao criar ZIP: ${res.error}`);
         }
@@ -835,7 +842,7 @@ function activateInlineRename(tr, item) {
                         selected_item_path = null;
                         selected_row_element = null;
                     }
-                    render_files(current_path);
+                    refreshCurrentUI();
                 } else {
                     logConsole(`Erro ao renomear: ${res.error}`);
                     nameCell.textContent = currentName;
@@ -905,7 +912,7 @@ function initDeleteModal() {
                 const res = await callBackend('execute_file_system_action', 'delete', current_delete_target, "");
                 if (res && res.success) {
                     logConsole(`[SUCESSO] Item eliminado: ${current_delete_target}`);
-                    render_files(current_path);
+                    refreshCurrentUI();
                 } else {
                     logConsole(`[ERRO] Falha ao eliminar: ${res.error}`);
                 }
@@ -1458,7 +1465,7 @@ function initContextMenu() {
         }
         const res = await callBackend('api_move_to_vault', context_menu_target_path);
         logConsole(res.msg || res.error);
-        if(current_path) render_files(current_path);
+        refreshCurrentUI();
         menu.style.display = "none";
     });
 
@@ -1522,7 +1529,7 @@ function initContextMenu() {
         
         if(res && res.success) {
             logConsole(`[SUCESSO] Transferência concluída para o Vault: ${selectedVault.name}`);
-            if(current_path) render_files(current_path);
+            refreshCurrentUI();
         } else {
             logConsole(`[ERRO] Falha ao transferir: ${res ? res.error : 'Erro desconhecido'}`);
         }
@@ -1668,7 +1675,7 @@ async function encryptItem(path) {
         const res = await callBackend('api_encriptar_com_password', path, pwd);
         if (res.success) {
             logConsole(`[SUCESSO] Ficheiro trancado: ${res.new_path}`);
-            render_files(current_path);
+            refreshCurrentUI();
         } else {
             logConsole(`[ERRO] Falha na encriptação: ${res.error}`);
         }
@@ -1688,7 +1695,7 @@ async function decryptItem(path) {
         const res = await callBackend('api_desencriptar_com_password', path, pwd);
         if (res.success) {
             logConsole(`[SUCESSO] Ficheiro restaurado: ${res.original_path}`);
-            render_files(current_path);
+            refreshCurrentUI();
         } else {
             logConsole(`[ERRO] Falha na desencriptação: ${res.error}`);
         }

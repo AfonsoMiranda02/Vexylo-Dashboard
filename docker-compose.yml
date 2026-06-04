@@ -4,10 +4,8 @@ services:
   db:
     image: postgres:15
     container_name: vexylo_db
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: supersecretpassword
-      POSTGRES_DB: superdashboard
+    env_file:
+      - .env
     ports:
       - "2050:5432"
     labels:
@@ -19,9 +17,8 @@ services:
   pgadmin:
     image: dpage/pgadmin4
     container_name: vexylo_pgadmin
-    environment:
-      PGADMIN_DEFAULT_EMAIL: admin@vexylo.local
-      PGADMIN_DEFAULT_PASSWORD: admin
+    env_file:
+      - .env
     ports:
       - "2070:80"
     labels:
@@ -35,8 +32,10 @@ services:
     container_name: vexylo_api
     ports:
       - "2060:2060"
+    env_file:
+      - .env
     environment:
-      - DATABASE_URL=postgresql://postgres:supersecretpassword@db:5432/superdashboard
+      - DATABASE_URL=${DOCKER_DATABASE_URL}
     volumes:
       - ./backend-api:/app
     labels:

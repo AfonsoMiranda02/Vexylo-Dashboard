@@ -49,3 +49,26 @@ class SystemLog(Base):
     cpu_avg = Column(Float)
     ram_avg = Column(Float)
     os_target = Column(String)
+
+class UserAccount(Base):
+    __tablename__ = "user_accounts"
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String, unique=True, index=True)
+    password_hash = Column(String)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+class VaultRegistry(Base):
+    __tablename__ = "vaults_registry"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, unique=True, index=True)
+    path = Column(String)
+    security_type = Column(String)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+class FileMetadata(Base):
+    __tablename__ = "file_metadata"
+    id = Column(Integer, primary_key=True, index=True)
+    path = Column(String, unique=True, index=True)
+    is_pinned = Column(Integer, default=0) # SQLite compat boolean
+    is_favorite = Column(Integer, default=0)
+    is_hidden = Column(Integer, default=0)

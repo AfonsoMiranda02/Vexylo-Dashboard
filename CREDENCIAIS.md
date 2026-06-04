@@ -14,22 +14,21 @@ O portal de entrada principal da aplicação desktop que bloqueia o HUD.
 
 ## 2. 🐳 Docker Backend API (Porta 2060)
 A API FastApi local que comunica com a base de dados e fornece telemetria avançada/dossiers.
-- **Username:** `batman`
-- **Password:** `supersecretpassword`
-- **Autenticação:** Cookie-based (`session_token`)
-- **Ficheiro de Origem Frontal:** `desktop-app/main.py` (`API_USER` e `API_PASS`)
-- **Ficheiro de Origem Servidor:** `api-server/security.py` ou `.env` do Docker
+- **Username:** (A tua conta criada no primeiro arranque da app. Ex: `Afonso Miranda`)
+- **Password:** (A password que definiste quando criaste a conta no Dashboard)
+- **Autenticação:** Cookie-based (`session_token` guardado automaticamente pela app)
+- **Ficheiro de Origem:** As contas estão agora guardadas de forma segura na Base de Dados.
 
 ---
 
 ## 3. 🗄️ Base de Dados PostgreSQL (Porta 5432 / Docker DB)
 A base de dados estrutural do sistema onde habitam os perfis e dossiers.
 - **Host:** `db` (Interno no Docker) / `localhost` (Externo)
-- **Porta:** `5432`
+- **Porta:** `5432` / `2050`
 - **Database:** `superdashboard`
 - **User:** `postgres`
 - **Password:** `supersecretpassword`
-- **Ficheiro de Origem:** `api-server/database.py` e `docker-compose.yml`
+- **Ficheiro de Origem:** As credenciais base estão agora no ficheiro escondido `.env` na raiz do projeto e são lidas pelo `docker-compose.yml`.
 
 ---
 

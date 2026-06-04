@@ -10,8 +10,9 @@ import os
 
 from database import engine, get_db, Base
 import models, schemas, seed
-from security import get_current_user, create_access_token, API_USERNAME, API_PASSWORD
+from security import get_current_user, create_access_token
 from templates import LOGIN_HTML, DASHBOARD_HTML
+import hashlib
 
 
 # Disable default docs because we want to protect them
@@ -56,9 +57,31 @@ async def get_dashboard(request: Request):
         # If not authenticated, redirect to the login page
         return RedirectResponse(url="/", status_code=302)
 
+@app.get("/api/has-account")
+def has_account(db: Session = Depends(get_db)):
+    existing = db.query(models.UserAccount).first()
+    if existing:
+        return {"has_account": True, "username": existing.username}
+    return {"has_account": False}
+
+@app.post("/api/register")
+def register(response: Response, username: str = Form(...), password: str = Form(...), db: Session = Depends(get_db)):
+    existing = db.query(models.UserAccount).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Account already exists")
+    
+    pw_hash = hashlib.sha256(password.encode()).hexdigest()
+    user = models.UserAccount(username=username, password_hash=pw_hash)
+    db.add(user)
+    db.commit()
+    return {"success": True}
+
 @app.post("/api/login")
-def login(response: Response, username: str = Form(...), password: str = Form(...)):
-    if username != API_USERNAME or password != API_PASSWORD:
+def login(response: Response, username: str = Form(...), password: str = Form(...), db: Session = Depends(get_db)):
+    user = db.query(models.UserAccount).filter(models.UserAccount.username == username).first()
+    pw_hash = hashlib.sha256(password.encode()).hexdigest()
+    
+    if not user or user.password_hash != pw_hash:
         raise HTTPException(status_code=400, detail="Incorrect username or password")
     
     access_token = create_access_token(data={"sub": username})
@@ -80,6 +103,20 @@ def logout(response: Response):
     response = JSONResponse(content={"message": "Successfully logged out"})
     response.delete_cookie(key="session_token")
     return response
+
+@app.get("/api/verify-key")
+def verify_key(request: Request, db: Session = Depends(get_db)):
+    api_key = request.headers.get("X-API-Key")
+    if not api_key:
+        raise HTTPException(status_code=401, detail="Missing API Key")
+    
+    db_key = db.query(models.ApiKey).filter(models.ApiKey.key_value == api_key).first()
+    if not db_key or db_key.active != 1:
+        raise HTTPException(status_code=401, detail="Invalid API Key")
+    if not db_key.allow_admin:
+        raise HTTPException(status_code=403, detail="API Key does not have admin permissions")
+    
+    return {"success": True, "valid": True, "name": db_key.name}
 
 # --- PROTECTED SWAGGER ROUTES ---
 
@@ -183,6 +220,57 @@ def delete_shortcut(shortcut_id: int, db: Session = Depends(get_db)):
     db.commit()
     return {"detail": "Deleted successfully"}
 
+# Vaults Registry Routes
+@api_router.get("/api/vaults", response_model=List[schemas.VaultRegistryResponse])
+def get_vaults(db: Session = Depends(get_db)):
+    return db.query(models.VaultRegistry).all()
+
+@api_router.post("/api/vaults", response_model=schemas.VaultRegistryResponse)
+def create_vault(vault: schemas.VaultRegistryCreate, db: Session = Depends(get_db)):
+    db_vault = models.VaultRegistry(**vault.dict())
+    db.add(db_vault)
+    db.commit()
+    db.refresh(db_vault)
+    return db_vault
+
+# File Metadata Routes
+@api_router.get("/api/file-metadata", response_model=List[schemas.FileMetadataResponse])
+def get_file_metadata(db: Session = Depends(get_db)):
+    return db.query(models.FileMetadata).all()
+
+@api_router.post("/api/file-metadata/toggle-pin")
+def toggle_pin(path: str = Query(...), db: Session = Depends(get_db)):
+    meta = db.query(models.FileMetadata).filter(models.FileMetadata.path == path).first()
+    if not meta:
+        meta = models.FileMetadata(path=path, is_pinned=1)
+        db.add(meta)
+    else:
+        meta.is_pinned = 0 if meta.is_pinned else 1
+    db.commit()
+    return {"success": True, "is_pinned": bool(meta.is_pinned)}
+
+@api_router.post("/api/file-metadata/toggle-favorite")
+def toggle_favorite(path: str = Query(...), db: Session = Depends(get_db)):
+    meta = db.query(models.FileMetadata).filter(models.FileMetadata.path == path).first()
+    if not meta:
+        meta = models.FileMetadata(path=path, is_favorite=1)
+        db.add(meta)
+    else:
+        meta.is_favorite = 0 if meta.is_favorite else 1
+    db.commit()
+    return {"success": True, "is_favorite": bool(meta.is_favorite)}
+
+@api_router.post("/api/file-metadata/toggle-hidden")
+def toggle_hidden(path: str = Query(...), db: Session = Depends(get_db)):
+    meta = db.query(models.FileMetadata).filter(models.FileMetadata.path == path).first()
+    if not meta:
+        meta = models.FileMetadata(path=path, is_hidden=1)
+        db.add(meta)
+    else:
+        meta.is_hidden = 0 if meta.is_hidden else 1
+    db.commit()
+    return {"success": True, "is_hidden": bool(meta.is_hidden)}
+
 # System Routes (Replaces Nomad OS)
 # Global variable to store Host OS info provided by the frontend
 HOST_OS_INFO = {
@@ -221,10 +309,13 @@ def create_system_log(log: schemas.SystemLogCreate, db: Session = Depends(get_db
 import security
 
 @api_router.post("/api/settings/update-credentials")
-def update_credentials(creds: schemas.UpdateCredentialsRequest):
-    security.API_USERNAME = creds.username
-    security.API_PASSWORD = creds.password
-    return {"success": True, "detail": "Credentials updated in memory. Will reset on container restart."}
+def update_credentials(creds: schemas.UpdateCredentialsRequest, db: Session = Depends(get_db)):
+    user = db.query(models.UserAccount).filter(models.UserAccount.username == creds.username).first()
+    if user:
+        user.password_hash = hashlib.sha256(creds.password.encode()).hexdigest()
+        db.commit()
+        return {"success": True, "detail": "Credentials updated in DB."}
+    return {"success": False, "detail": "User not found."}
 
 # --- API KEYS ---
 import uuid

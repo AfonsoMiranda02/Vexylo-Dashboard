@@ -12,8 +12,7 @@ ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 # 24 hours
 
 # Read credentials from environment variables or use defaults
-API_USERNAME = os.getenv("USERNAME", "batman")
-API_PASSWORD = os.getenv("PASSWORD", "supersecretpassword")
+# API_USERNAME and API_PASSWORD removed as we use UserAccount DB model
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()

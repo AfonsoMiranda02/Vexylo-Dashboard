@@ -109,8 +109,6 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 web_dir = os.path.join(current_dir, 'web')
 
 API_BASE_URL = "http://localhost:2060"
-API_USER = "batman"
-API_PASS = "supersecretpassword"
 
 # Sessão global persistente (Mantém os cookies/tokens automaticamente para não ter de relogar)
 api_session = requests.Session()
@@ -119,16 +117,15 @@ api_session = requests.Session()
 # 2. HANDSHAKE E AUTENTICAÇÃO COM API
 # ----------------------------------------------------
 def authenticate_api():
-    """Realiza o handshake inicial para obter as credenciais da API."""
+    """Verifica se o backend API está online e acessível."""
     try:
-        login_data = {"username": API_USER, "password": API_PASS}
-        # A API recebe os dados por form-data (Form) e devolve um cookie 'session_token'
-        res = api_session.post(f"{API_BASE_URL}/api/login", data=login_data, timeout=5)
+        # Apenas um ping para garantir que o Docker/API está online antes de continuar
+        res = requests.get(f"{API_BASE_URL}/docs", timeout=5)
         if res.status_code == 200:
-            print("[*] Autenticação Mestra concluída com sucesso. Sessão estabelecida.")
+            print("[*] Conexão com o Backend da API (Docker) estabelecida.")
             return True
         else:
-            print(f"[!] Erro na Autenticação Mestra: HTTP {res.status_code} - {res.text}")
+            print(f"[!] Aviso na ligação: A API não retornou 200 OK (Código: {res.status_code})")
             return False
     except Exception as e:
         print(f"[!] Erro crítico ao conectar com a API: {e}")
@@ -224,52 +221,46 @@ class VexyloBridge(QObject):
 
     @pyqtSlot(result=bool)
     def api_has_account(self):
-        return os.path.exists('local_account.json') and os.path.getsize('local_account.json') > 0
+        try:
+            res = requests.get(f"{API_BASE_URL}/api/has-account", timeout=3)
+            if res.status_code == 200:
+                return res.json().get("has_account", False)
+        except:
+            pass
+        return False
 
     @pyqtSlot(str, str, result=bool)
     def api_register_account(self, username, password):
-        if self.api_has_account():
-            return False
-        import hashlib, json
-        # Very simple hash for demonstration
-        pw_hash = hashlib.sha256(password.encode()).hexdigest()
-        data = {"username": username, "password_hash": pw_hash}
         try:
-            with open('local_account.json', 'w') as f:
-                json.dump(data, f)
-            return True
-        except Exception:
-            return False
+            res = requests.post(f"{API_BASE_URL}/api/register", data={"username": username, "password": password}, timeout=3)
+            if res.status_code == 200:
+                return self.api_login_account(username, password)
+        except:
+            pass
+        return False
 
     @pyqtSlot(str, str, result=bool)
     def api_login_account(self, username, password):
-        if not self.api_has_account():
-            return False
-        import hashlib, json
         try:
-            with open('local_account.json', 'r') as f:
-                data = json.load(f)
-            pw_hash = hashlib.sha256(password.encode()).hexdigest()
-            return data.get("username") == username and data.get("password_hash") == pw_hash
-        except Exception:
+            res = api_session.post(f"{API_BASE_URL}/api/login", data={"username": username, "password": password}, timeout=3)
+            return res.status_code == 200
+        except:
             return False
 
     @pyqtSlot(str, result=bool)
     def api_verify_master_password(self, password):
-        if not self.api_has_account():
-            return False
-        import hashlib, json
         try:
-            with open('local_account.json', 'r') as f:
-                data = json.load(f)
-            pw_hash = hashlib.sha256(password.encode()).hexdigest()
-            return data.get("password_hash") == pw_hash
-        except Exception:
-            return False
+            res = requests.get(f"{API_BASE_URL}/api/has-account", timeout=3)
+            if res.status_code == 200:
+                username = res.json().get("username")
+                if username:
+                    return self.api_login_account(username, password)
+        except:
+            pass
+        return False
 
     @pyqtSlot(result=bool)
     def api_has_api_key(self):
-        # Dummy check for now, can be implemented later to actually check docker
         return os.path.exists('local_apikey.json')
 
     @pyqtSlot(str, result=bool)
@@ -282,32 +273,51 @@ class VexyloBridge(QObject):
         except Exception:
             return False
 
-    @pyqtSlot(result='QVariant')
-    def api_get_vaults(self):
+    @pyqtSlot(result=bool)
+    def api_verify_api_key(self):
         import json
         try:
-            if not os.path.exists('vaults_registry.json'):
-                return []
-            with open('vaults_registry.json', 'r') as f:
-                return json.load(f)
+            if not os.path.exists('local_apikey.json'):
+                return False
+            with open('local_apikey.json', 'r') as f:
+                data = json.load(f)
+                key = data.get("api_key")
+            
+            if not key:
+                return False
+                
+            res = requests.get(f"{API_BASE_URL}/api/verify-key", headers={"X-API-Key": key}, timeout=3)
+            if res.status_code == 200:
+                # Se for válida, injeta no api_session global para todos os futuros pedidos
+                api_session.headers.update({"X-API-Key": key})
+                return True
         except Exception:
-            return []
+            pass
+        return False
+
+    @pyqtSlot(result='QVariant')
+    def api_get_vaults(self):
+        try:
+            res = api_session.get(f"{API_BASE_URL}/api/vaults", timeout=3)
+            if res.status_code == 200:
+                return res.json()
+        except:
+            pass
+        return []
 
     @pyqtSlot(str, str, str, str, result=bool)
     def api_register_vault(self, name, path, security_type, password):
-        import json, zipfile
+        import zipfile
         vaults = self.api_get_vaults()
-        # Check if already exists
         for v in vaults:
             if v["name"] == name:
                 return False
         
-        # Create physical empty vault
         try:
             os.makedirs(os.path.dirname(path), exist_ok=True)
             empty_zip_path = path + ".empty.zip"
             with zipfile.ZipFile(empty_zip_path, 'w') as zf:
-                pass # Empty zip
+                pass
             
             chave = _derivar_chave(password)
             f_suite = Fernet(chave)
@@ -318,20 +328,17 @@ class VexyloBridge(QObject):
             with open(path, 'wb') as f:
                 f.write(encrypted)
             os.remove(empty_zip_path)
-            
         except Exception:
             return False
 
-        vaults.append({
-            "name": name,
-            "path": path,
-            "security_type": security_type,
-            "created_at": time.time()
-        })
         try:
-            with open('vaults_registry.json', 'w') as f:
-                json.dump(vaults, f)
-            return True
+            payload = {
+                "name": name,
+                "path": path,
+                "security_type": security_type
+            }
+            res = api_session.post(f"{API_BASE_URL}/api/vaults", json=payload, timeout=3)
+            return res.status_code in [200, 201]
         except Exception:
             return False
 
@@ -448,7 +455,7 @@ class VexyloBridge(QObject):
     def obter_status_api(self):
         """Verifica o status base da API localmente"""
         try:
-            res = requests.get(f"{API_BASE_URL}/", timeout=2)
+            res = requests.get(f"{API_BASE_URL}/", timeout=0.1)
             if res.status_code == 200:
                 return {"online": True, "data": "API Vexylo Online"}
             return {"online": False, "error": f"Erro HTTP {res.status_code}"}
@@ -484,71 +491,58 @@ class VexyloBridge(QObject):
     # 5. GESTOR DE FICHEIROS INTERNO ()
     # ----------------------------------------------------
 
-    import json
-
-    def _load_json_vault(self, vault_name):
-        try:
-            if os.path.exists(vault_name):
-                with open(vault_name, 'r', encoding='utf-8') as f:
-                    return json.load(f)
-            return []
-        except Exception:
-            return []
-
-    def _save_json_vault(self, vault_name, data):
-        try:
-            with open(vault_name, 'w', encoding='utf-8') as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
-        except Exception:
-            pass
-
-    
     @pyqtSlot(str, result='QVariant')
     def api_toggle_hide_item(self, path):
-        vault = self._load_json_vault('hidden_vault.json')
-        if path in vault:
-            vault.remove(path)
-            msg = "Item visível."
-        else:
-            vault.append(path)
-            msg = "Item ocultado."
-        self._save_json_vault('hidden_vault.json', vault)
-        return {"success": True, "msg": msg}
+        try:
+            res = api_session.post(f"{API_BASE_URL}/api/file-metadata/toggle-hidden?path={path}", timeout=3)
+            if res.status_code == 200:
+                data = res.json()
+                msg = "Item ocultado." if data.get("is_hidden") else "Item visível."
+                return {"success": True, "msg": msg}
+        except Exception as e:
+            pass
+        return {"success": False, "msg": "Erro de comunicação."}
 
-    
     @pyqtSlot(str, result='QVariant')
     def api_toggle_pin(self, path):
-        vault = self._load_json_vault('user_vault_pins.json')
-        if path in vault:
-            vault.remove(path)
-            msg = "PIN removido."
-        else:
-            vault.append(path)
-            msg = "PIN adicionado."
-        self._save_json_vault('user_vault_pins.json', vault)
-        return {"success": True, "msg": msg}
+        try:
+            res = api_session.post(f"{API_BASE_URL}/api/file-metadata/toggle-pin?path={path}", timeout=3)
+            if res.status_code == 200:
+                data = res.json()
+                msg = "PIN adicionado." if data.get("is_pinned") else "PIN removido."
+                return {"success": True, "msg": msg}
+        except Exception as e:
+            pass
+        return {"success": False, "msg": "Erro de comunicação."}
 
-    
     @pyqtSlot(str, result='QVariant')
     def api_toggle_favorite(self, path):
-        vault = self._load_json_vault('user_vault_favs.json')
-        if path in vault:
-            vault.remove(path)
-            msg = "Favorito removido."
-        else:
-            vault.append(path)
-            msg = "Favorito adicionado."
-        self._save_json_vault('user_vault_favs.json', vault)
-        return {"success": True, "msg": msg}
+        try:
+            res = api_session.post(f"{API_BASE_URL}/api/file-metadata/toggle-favorite?path={path}", timeout=3)
+            if res.status_code == 200:
+                data = res.json()
+                msg = "Favorito adicionado." if data.get("is_favorite") else "Favorito removido."
+                return {"success": True, "msg": msg}
+        except Exception as e:
+            pass
+        return {"success": False, "msg": "Erro de comunicação."}
 
-    
     @pyqtSlot(result='QVariant')
     def api_get_user_shortcuts(self):
-        return {
-            "success": True, 
-            "pins": self._load_json_vault('user_vault_pins.json'),
-            "favs": self._load_json_vault('user_vault_favs.json')
-        }
+        try:
+            res = api_session.get(f"{API_BASE_URL}/api/file-metadata", timeout=3)
+            if res.status_code == 200:
+                items = res.json()
+                pins = [item["path"] for item in items if item["is_pinned"]]
+                favs = [item["path"] for item in items if item["is_favorite"]]
+                return {
+                    "success": True, 
+                    "pins": pins,
+                    "favs": favs
+                }
+        except Exception as e:
+            pass
+        return {"success": False, "pins": [], "favs": []}
 
     
     @pyqtSlot(result='QVariant')
@@ -869,7 +863,13 @@ class VexyloBridge(QObject):
                                 if is_dir:
                                     items_dict[top_level]["is_dir"] = True
             
-                hidden_vault = self._load_json_vault('hidden_vault.json')
+                hidden_vault = []
+                try:
+                    res = api_session.get(f"{API_BASE_URL}/api/file-metadata", timeout=3)
+                    if res.status_code == 200:
+                        hidden_vault = [item["path"] for item in res.json() if item["is_hidden"]]
+                except:
+                    pass
                 items = []
                 for name, data in items_dict.items():
                     virtual_path = f"{zip_file_path}/{prefix}{name}".rstrip('/')
@@ -897,7 +897,13 @@ class VexyloBridge(QObject):
             if not path.exists() or not path.is_dir():
                 return {"success": False, "error": "Caminho inválido ou não é um diretório."}
             
-            hidden_vault = self._load_json_vault('hidden_vault.json')
+            hidden_vault = []
+            try:
+                res = api_session.get(f"{API_BASE_URL}/api/file-metadata", timeout=3)
+                if res.status_code == 200:
+                    hidden_vault = [item["path"] for item in res.json() if item["is_hidden"]]
+            except:
+                pass
             items = []
             for item in path.iterdir():
                 try:

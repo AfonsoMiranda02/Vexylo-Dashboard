@@ -82,3 +82,46 @@ class SystemLogResponse(SystemLogCreate):
 class UpdateCredentialsRequest(BaseModel):
     username: str
     password: str
+
+class UserAccountBase(BaseModel):
+    username: str
+
+class UserAccountCreate(UserAccountBase):
+    password: str # In plain text, to be hashed by backend
+
+class UserAccountResponse(UserAccountBase):
+    id: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class VaultRegistryBase(BaseModel):
+    name: str
+    path: str
+    security_type: str
+
+class VaultRegistryCreate(VaultRegistryBase):
+    pass
+
+class VaultRegistryResponse(VaultRegistryBase):
+    id: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class FileMetadataBase(BaseModel):
+    path: str
+    is_pinned: bool = False
+    is_favorite: bool = False
+    is_hidden: bool = False
+
+class FileMetadataCreate(FileMetadataBase):
+    pass
+
+class FileMetadataResponse(FileMetadataBase):
+    id: int
+
+    class Config:
+        from_attributes = True
